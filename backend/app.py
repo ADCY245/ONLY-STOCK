@@ -8,7 +8,10 @@ from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from pymongo.errors import DuplicateKeyError
 
-from db import get_database, get_inventory_collection, get_stock_logs_collection
+try:
+    from .db import get_database, get_inventory_collection, get_stock_logs_collection
+except ImportError:
+    from db import get_database, get_inventory_collection, get_stock_logs_collection
 
 
 app = Flask(__name__)
