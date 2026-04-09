@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="brand-block">
+                <p class="eyebrow">Inventory System</p>
+                <h1>Stock Dashboard</h1>
+                <p class="sidebar-copy">Manage categories, brands, stock levels, logs, and Excel import/export from one place.</p>
+            </div>
+
+            <section class="sidebar-card">
+                <div class="section-heading compact">
+                    <h2>Categories</h2>
+                    <span id="categoryCount" class="badge">0</span>
+                </div>
+                <ul id="categoryList" class="category-list">
+                    <li class="empty-state">No categories yet</li>
+                </ul>
+            </section>
+
+            <section class="sidebar-card">
+                <div class="section-heading compact">
+                    <h2>Tree View</h2>
+                </div>
+                <div id="treeView" class="tree-view">
+                    <p class="empty-state">No inventory hierarchy available</p>
+                </div>
+            </section>
+        </aside>
+
+        <main class="content">
+            <header class="page-header">
+                <div>
+                    <p class="eyebrow">Dashboard</p>
+                    <h2>Inventory Overview</h2>
+                </div>
+                <div class="header-actions">
+                    <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
+                    <button id="exportButton" class="primary-button" type="button">Export Excel</button>
+                </div>
+            </header>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <h3>Add Item</h3>
+                        <p>Create a new inventory record with quantity and unit.</p>
+                    </div>
+                    <p id="formMessage" class="message"></p>
+                </div>
+
+                <form id="itemForm" class="item-form" novalidate>
+                    <label>
+                        Category
+                        <select id="formCategorySelect" name="category" required>
+                            <option value="">Select category</option>
+                        </select>
+                    </label>
+                    <label>
+                        Brand
+                        <input type="text" name="brand" placeholder="Day" required>
+                    </label>
+                    <label>
+                        Type
+                        <input type="text" name="type" placeholder="UV" required>
+                    </label>
+                    <label>
+                        Size
+                        <input type="text" name="size" placeholder="740x520" required>
+                    </label>
+                    <label>
+                        Quantity
+                        <input type="number" name="quantity" min="0" step="1" placeholder="10" required>
+                    </label>
+                    <label>
+                        Unit
+                        <input type="text" name="unit" placeholder="pcs" required>
+                    </label>
+                    <div class="form-actions">
+                        <button class="primary-button" type="submit">Add</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <h3>Search & Filters</h3>
+                        <p>Filter inventory by text, category, brand, type, or low stock.</p>
+                    </div>
+                    <p id="statusText" class="message">Loading inventory...</p>
+                </div>
+
+                <div class="filters-grid">
+                    <label>
+                        Search
+                        <input id="searchInput" type="text" placeholder="Search category, brand, type">
+                    </label>
+                    <label>
+                        Category
+                        <select id="categoryFilter">
+                            <option value="">All categories</option>
+                        </select>
+                    </label>
+                    <label>
+                        Brand
+                        <select id="brandFilter">
+                            <option value="">All brands</option>
+                        </select>
+                    </label>
+                    <label>
+                        Type
+                        <select id="typeFilter">
+                            <option value="">All types</option>
+                        </select>
+                    </label>
+                    <label class="checkbox-field">
+                        <span>Low stock only</span>
+                        <input id="lowStockOnly" type="checkbox">
+                    </label>
+                    <label>
+                        Low stock threshold
+                        <input id="lowStockThreshold" type="number" min="0" step="1" value="5">
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <h3>Excel Tools</h3>
+                        <p>Import inventory updates from Excel or export the full list.</p>
+                    </div>
+                    <p id="excelMessage" class="message"></p>
+                </div>
+
+                <form id="excelForm" class="excel-form">
+                    <input id="excelFile" type="file" accept=".xlsx,.xls" required>
+                    <button class="secondary-button" type="submit">Upload Excel</button>
+                </form>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <h3>Inventory Table</h3>
+                        <p>Update stock with positive or negative values. Quantity never goes below zero.</p>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Brand</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Quantity</th>
+                                <th>Unit</th>
+                                <th>Update Stock</th>
+                                <th>Delete</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody">
+                            <tr>
+                                <td colspan="8" class="empty-state">No inventory available</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <h3>Stock Logs</h3>
+                        <p>Recent inventory changes from manual updates and Excel imports.</p>
+                    </div>
+                </div>
+
+                <div id="logsList" class="logs-list">
+                    <p class="empty-state">No stock history yet</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <template id="inventoryRowTemplate">
+        <tr>
+            <td data-field="category"></td>
+            <td data-field="brand"></td>
+            <td data-field="type"></td>
+            <td data-field="size"></td>
+            <td data-field="quantity"></td>
+            <td data-field="unit"></td>
+            <td>
+                <div class="update-controls">
+                    <input class="delta-input" type="number" value="1" step="1">
+                    <button class="secondary-button update-button" type="button">Update</button>
+                </div>
+            </td>
+            <td>
+                <button class="danger-button delete-button" type="button">Delete</button>
+            </td>
+        </tr>
+    </template>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,365 @@
+:root {
+    --bg: #f4efe6;
+    --panel: #fffdf9;
+    --panel-strong: #f7f1e7;
+    --border: #d8cebf;
+    --text: #21313c;
+    --muted: #68707a;
+    --accent: #0d5c63;
+    --accent-dark: #08484d;
+    --danger: #b64635;
+    --danger-bg: #fde8e3;
+    --success: #0f766e;
+    --shadow: 0 18px 40px rgba(54, 44, 32, 0.08);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text);
+    background:
+        radial-gradient(circle at top left, rgba(13, 92, 99, 0.14), transparent 26%),
+        linear-gradient(180deg, #f9f5ed 0%, var(--bg) 100%);
+}
+
+button,
+input,
+select {
+    font: inherit;
+}
+
+.layout {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 310px 1fr;
+}
+
+.sidebar {
+    padding: 1.5rem;
+    background: #18313a;
+    color: #f5efe5;
+}
+
+.content {
+    padding: 2rem;
+}
+
+.brand-block {
+    margin-bottom: 1.5rem;
+}
+
+.eyebrow {
+    margin: 0 0 0.35rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.74rem;
+    color: var(--muted);
+}
+
+.sidebar .eyebrow,
+.sidebar-copy {
+    color: rgba(245, 239, 229, 0.76);
+}
+
+.sidebar h1,
+.page-header h2,
+.section-heading h2,
+.section-heading h3 {
+    margin: 0;
+}
+
+.sidebar-copy {
+    margin-top: 0.5rem;
+    line-height: 1.6;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.header-actions,
+.form-actions,
+.excel-form,
+.update-controls {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.sidebar-card,
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+}
+
+.sidebar-card {
+    padding: 1rem;
+    color: var(--text);
+    margin-bottom: 1rem;
+}
+
+.panel {
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.section-heading.compact {
+    align-items: center;
+}
+
+.section-heading p,
+.message {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+}
+
+.message[data-tone="error"] {
+    color: var(--danger);
+}
+
+.message[data-tone="success"] {
+    color: var(--success);
+}
+
+.badge {
+    display: inline-flex;
+    min-width: 2rem;
+    padding: 0.35rem 0.6rem;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    font-weight: 700;
+}
+
+.category-list,
+.logs-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.category-list {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.category-list li,
+.log-entry {
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.8rem 0.9rem;
+}
+
+.category-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tree-view {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.tree-view details {
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.65rem 0.8rem;
+}
+
+.tree-view summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.tree-children {
+    margin-top: 0.65rem;
+    padding-left: 1rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.tree-leaf {
+    padding: 0.55rem 0.65rem;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    color: var(--muted);
+}
+
+.item-form,
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.item-form label,
+.filters-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    font-weight: 600;
+}
+
+
+.checkbox-field {
+    justify-content: flex-end;
+}
+
+.checkbox-field input {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin-top: 0.1rem;
+}
+
+input,
+select {
+    width: 100%;
+    padding: 0.75rem 0.85rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+}
+
+.excel-form input[type="file"] {
+    flex: 1;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+    border: 0;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover {
+    transform: translateY(-1px);
+}
+
+.primary-button {
+    background: var(--accent);
+    color: #fff;
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+    background: var(--accent-dark);
+    color: #fff;
+}
+
+.secondary-button {
+    background: var(--panel-strong);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.danger-button {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 0.85rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.delta-input {
+    max-width: 90px;
+}
+
+.logs-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.log-entry p {
+    margin: 0.15rem 0;
+}
+
+.empty-state {
+    color: var(--muted);
+    text-align: center;
+}
+
+@media (max-width: 1080px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+
+    .item-form,
+    .filters-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .content,
+    .sidebar {
+        padding: 1rem;
+    }
+
+    .page-header,
+    .section-heading,
+    .header-actions,
+    .excel-form,
+    .update-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .item-form,
+    .filters-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .delta-input {
+        max-width: 100%;
+    }
+}
