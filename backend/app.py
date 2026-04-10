@@ -2,9 +2,10 @@ import os
 import re
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from pymongo.errors import DuplicateKeyError
 
@@ -16,6 +17,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 EXCEL_COLUMNS = ["Category", "Brand", "Type", "Size", "Quantity", "Unit"]
 DEFAULT_LOW_STOCK_THRESHOLD = 5
@@ -206,7 +208,16 @@ def process_excel_row(row):
 
 @app.route("/")
 def home():
-    return "API running"
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def frontend_assets(filename):
+    if filename in {"style.css", "script.js"}:
+        return send_from_directory(FRONTEND_DIR, filename)
+    if filename == "favicon.ico":
+        return ("", 204)
+    return ("Not Found", 404)
 
 
 @app.route("/health")

@@ -1,4 +1,4 @@
-const API_BASE_URL = window.location.protocol.startsWith("http") && window.location.port === "5000"
+const API_BASE_URL = window.location.protocol.startsWith("http")
     ? window.location.origin
     : "http://localhost:5000";
 
