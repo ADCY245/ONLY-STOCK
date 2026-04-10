@@ -78,6 +78,14 @@ const formHeightInput = document.getElementById("formHeightInput");
 const formThicknessInput = document.getElementById("formThicknessInput");
 const thicknessHint = document.getElementById("thicknessHint");
 
+const formBrandInput = itemForm.querySelector('input[name="brand"]');
+const formTypeInput = itemForm.querySelector('input[name="type"]');
+const brandLabel = formBrandInput.closest("label");
+const typeLabel = formTypeInput.closest("label");
+const widthLabel = formWidthInput.closest("label");
+const heightLabel = formHeightInput.closest("label");
+const thicknessLabel = formThicknessInput.closest("label");
+
 const CATEGORY_OPTIONS = [
     { code: "01", label: "Rubber Blankets" },
     { code: "02", label: "Metalback Blankets" },
@@ -132,6 +140,8 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "mm",
+        requiresBrand: true,
+        requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
     },
@@ -139,6 +149,8 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "mm",
+        requiresBrand: true,
+        requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
     },
@@ -146,6 +158,8 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "micron",
+        requiresBrand: true,
+        requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
     },
@@ -153,6 +167,8 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "micron",
+        requiresBrand: true,
+        requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
     },
@@ -160,6 +176,8 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "micron",
+        requiresBrand: true,
+        requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
     },
@@ -167,57 +185,91 @@ const CATEGORY_RULES = {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "mm",
-        unitOptions: ["pcs", "rolls"],
-        defaultUnit: "pcs",
+        requiresBrand: false,
+        requiresType: false,
+        unitOptions: ["pkt"],
+        defaultUnit: "pkt",
     },
     "Cutting Rules": {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "pt",
-        unitOptions: ["pcs", "rolls"],
-        defaultUnit: "pcs",
+        requiresBrand: true,
+        requiresType: true,
+        typeOptions: ["coil", "pkt"],
+        unitOptions: ["coil", "pkt"],
+        defaultUnit: "coil",
+        unitLinkedToType: true,
     },
     "Creasing Rules": {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "pt",
-        unitOptions: ["pcs", "rolls"],
-        defaultUnit: "pcs",
+        requiresBrand: true,
+        requiresType: true,
+        typeOptions: ["coil", "pkt"],
+        unitOptions: ["coil", "pkt"],
+        defaultUnit: "coil",
+        unitLinkedToType: true,
     },
     "Litho Perforation Rules": {
         usesDimensions: true,
         requiresThickness: true,
         thicknessUnit: "pt",
-        unitOptions: ["pcs", "rolls"],
-        defaultUnit: "pcs",
+        requiresBrand: true,
+        requiresType: true,
+        typeOptions: ["coil", "pkt"],
+        unitOptions: ["coil", "pkt"],
+        defaultUnit: "coil",
+        unitLinkedToType: true,
     },
     "Washing Solutions": {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: true,
+        typeIsFormat: true,
         unitOptions: ["ltr", "kg"],
         defaultUnit: "ltr",
     },
     "Fountain Solutions": {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: true,
+        typeIsFormat: true,
         unitOptions: ["ltr", "kg"],
         defaultUnit: "ltr",
     },
     "Plate Care Products": {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: true,
+        typeIsFormat: true,
         unitOptions: ["ltr", "kg"],
         defaultUnit: "ltr",
     },
     "Roller Care Products": {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: true,
+        typeIsFormat: true,
         unitOptions: ["ltr", "kg"],
         defaultUnit: "ltr",
     },
     "Blanket Maintenance Products": {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: true,
+        typeIsFormat: true,
         unitOptions: ["ltr", "kg"],
         defaultUnit: "ltr",
     },
@@ -260,6 +312,10 @@ function getCategoryRule(category) {
     return CATEGORY_RULES[category] || {
         usesDimensions: false,
         requiresThickness: false,
+        requiresBrand: true,
+        requiresType: true,
+        quantityAllowsDecimal: false,
+        unitLinkedToType: false,
         unitOptions: UNIT_OPTIONS,
         defaultUnit: "pcs",
     };
@@ -269,9 +325,24 @@ function updateCategoryDrivenFields() {
     const rule = getCategoryRule(formCategorySelect.value);
     const previousUnit = formUnitSelect.value;
 
+    brandLabel.style.display = rule.requiresBrand ? "" : "none";
+    typeLabel.style.display = rule.requiresType ? "" : "none";
+    formBrandInput.disabled = !rule.requiresBrand;
+    formTypeInput.disabled = !rule.requiresType;
+    if (!rule.requiresBrand) {
+        formBrandInput.value = "";
+    }
+    if (!rule.requiresType) {
+        formTypeInput.value = "";
+    }
+
     formWidthInput.disabled = !rule.usesDimensions;
     formHeightInput.disabled = !rule.usesDimensions;
     formThicknessInput.disabled = !rule.requiresThickness;
+
+    widthLabel.style.display = rule.usesDimensions ? "" : "none";
+    heightLabel.style.display = rule.usesDimensions ? "" : "none";
+    thicknessLabel.style.display = rule.requiresThickness ? "" : "none";
 
     if (!rule.usesDimensions) {
         formWidthInput.value = "";
@@ -296,7 +367,25 @@ function updateCategoryDrivenFields() {
     } else {
         formUnitSelect.value = rule.defaultUnit;
     }
+
+    if (rule.unitLinkedToType && rule.typeOptions) {
+        const normalizedType = formTypeInput.value.trim().toLowerCase();
+        if (rule.typeOptions.includes(normalizedType)) {
+            formUnitSelect.value = normalizedType;
+        }
+    }
 }
+
+formTypeInput.addEventListener("input", () => {
+    const rule = getCategoryRule(formCategorySelect.value);
+    if (!rule.unitLinkedToType || !rule.typeOptions) {
+        return;
+    }
+    const normalized = formTypeInput.value.trim().toLowerCase();
+    if (rule.typeOptions.includes(normalized)) {
+        formUnitSelect.value = normalized;
+    }
+});
 
 function buildParams() {
     const params = new URLSearchParams();
@@ -598,7 +687,13 @@ function validateForm(formData) {
         return "unit is required";
     }
 
-    const requiredFields = ["brand", "type", "quantity"];
+    const requiredFields = ["quantity"];
+    if (categoryRule.requiresBrand) {
+        requiredFields.push("brand");
+    }
+    if (categoryRule.requiresType) {
+        requiredFields.push("type");
+    }
     for (const field of requiredFields) {
         const value = formData.get(field);
         if (typeof value === "string" && !value.trim()) {
@@ -610,8 +705,31 @@ function validateForm(formData) {
     }
 
     const quantity = Number(formData.get("quantity"));
-    if (!Number.isInteger(quantity) || quantity < 0) {
+    if (!Number.isFinite(quantity) || quantity < 0) {
+        return "quantity must be a non-negative number";
+    }
+    if (!categoryRule.quantityAllowsDecimal && !Number.isInteger(quantity)) {
         return "quantity must be a non-negative integer";
+    }
+
+    if (categoryRule.unitLinkedToType) {
+        const typeValue = (formData.get("type") || "").trim().toLowerCase();
+        if (!typeValue) {
+            return "type is required";
+        }
+        if (!categoryRule.typeOptions || !categoryRule.typeOptions.includes(typeValue)) {
+            return `type must be one of: ${(categoryRule.typeOptions || []).join(", ")}`;
+        }
+        if (unitValue.toLowerCase() !== typeValue) {
+            return "unit must match type for this category";
+        }
+    }
+
+    if (categoryRule.typeIsFormat) {
+        const typeValue = (formData.get("type") || "").trim();
+        if (!/^\d+(?:\.\d+)?\s*(ltr|l|kg|g|ml)$/i.test(typeValue)) {
+            return "type must be a format like 1ltr, 5 ltr, 1kg";
+        }
     }
 
     if (categoryRule.usesDimensions) {
@@ -639,8 +757,8 @@ async function handleAddItem(event) {
 
     const payload = {
         category: formCategorySelect.value.trim(),
-        brand: formData.get("brand").trim(),
-        type: formData.get("type").trim(),
+        brand: categoryRule.requiresBrand ? formData.get("brand").trim() : "",
+        type: categoryRule.requiresType ? formData.get("type").trim() : "",
         width: formWidthInput.value.trim(),
         height: formHeightInput.value.trim(),
         thickness: formThicknessInput.value.trim(),

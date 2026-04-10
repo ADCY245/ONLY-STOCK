@@ -56,6 +56,24 @@ DIMENSIONAL_CATEGORIES = THICKNESS_REQUIRED_CATEGORIES | {
     "Tesamol Tape",
 }
 
+NO_BRAND_TYPE_CATEGORIES = {
+    "Creasing Matrix",
+}
+
+RULE_UNIT_LINKED_CATEGORIES = {
+    "Cutting Rules",
+    "Creasing Rules",
+    "Litho Perforation Rules",
+}
+
+CHEMICAL_CATEGORIES = {
+    "Washing Solutions",
+    "Fountain Solutions",
+    "Plate Care Products",
+    "Roller Care Products",
+    "Blanket Maintenance Products",
+}
+
 
 def clean_text(value):
     if not isinstance(value, str):
@@ -88,6 +106,29 @@ def parse_integer(value, field_name, allow_negative=False):
     return parsed, None
 
 
+def parse_number(value, field_name, allow_negative=False):
+    if isinstance(value, bool):
+        return None, f"{field_name} must be a number"
+
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None, f"{field_name} is required"
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None, f"{field_name} must be a number"
+    else:
+        return None, f"{field_name} must be a number"
+
+    if not allow_negative and parsed < 0:
+        return None, f"{field_name} must be a non-negative number"
+
+    return parsed, None
+
+
 def parse_optional_text(value):
     if value is None:
         return None
@@ -95,6 +136,49 @@ def parse_optional_text(value):
         return clean_text(value)
     text = str(value).strip()
     return text or None
+
+
+def category_requires_brand(category):
+    return category not in NO_BRAND_TYPE_CATEGORIES
+
+
+def category_requires_type(category):
+    return category not in NO_BRAND_TYPE_CATEGORIES
+
+
+def normalize_optional_dimension(value):
+    parsed = parse_optional_text(value)
+    if parsed is None:
+        return None
+    compact = re.sub(r"\s+", "", parsed)
+    return compact
+
+
+def normalize_rule_type(value):
+    cleaned = clean_text(value) or ""
+    lowered = cleaned.lower()
+    if lowered in {"packet", "pack", "pkt"}:
+        return "pkt"
+    if lowered in {"coil", "coils"}:
+        return "coil"
+    return cleaned
+
+
+def parse_format_type(value):
+    cleaned = clean_text(value)
+    if not cleaned:
+        return None, None, None, "type is required"
+
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(ltr|l|kg|g|ml)", cleaned.strip(), flags=re.IGNORECASE)
+    if not match:
+        return None, None, None, "type must be a format like 1ltr, 5 ltr, 1kg"
+
+    amount = float(match.group(1))
+    unit_raw = match.group(2).lower()
+    if unit_raw == "l":
+        unit_raw = "ltr"
+    normalized_type = f"{match.group(1)} {unit_raw}".replace("  ", " ")
+    return normalized_type, amount, unit_raw, None
 
 
 def category_requires_thickness(category):
@@ -106,11 +190,7 @@ def category_uses_dimensions(category):
 
 
 def normalize_dimension(value):
-    parsed = parse_optional_text(value)
-    if parsed is None:
-        return None
-    compact = re.sub(r"\s+", "", parsed)
-    return compact
+    return normalize_optional_dimension(value)
 
 
 def build_size_label(width, height):
@@ -127,10 +207,48 @@ def build_item_payload(data):
     height = normalize_dimension(data.get("height"))
     thickness = parse_optional_text(data.get("thickness"))
     unit = clean_text(data.get("unit"))
-    quantity, quantity_error = parse_integer(data.get("quantity"), "quantity")
+    if not category:
+        return None, "category is required"
 
-    if not all([category, brand, item_type, unit]):
-        return None, "category, brand, type, quantity, and unit are required"
+    if category in NO_BRAND_TYPE_CATEGORIES:
+        brand = "__none__"
+        item_type = "__none__"
+
+    requires_brand = category_requires_brand(category)
+    requires_type = category_requires_type(category)
+
+    if requires_brand and not brand:
+        return None, "brand is required"
+    if requires_type and not item_type:
+        return None, "type is required"
+    if not unit:
+        return None, "unit is required"
+
+    if category == "Creasing Matrix" and unit.lower() != "pkt":
+        return None, "unit must be pkt for this category"
+
+    if category in RULE_UNIT_LINKED_CATEGORIES:
+        normalized_type = normalize_rule_type(item_type)
+        if normalized_type not in {"coil", "pkt"}:
+            return None, "type must be coil or pkt for this category"
+        item_type = normalized_type
+        if unit.lower() != item_type:
+            return None, "unit must match type for this category"
+
+    format_size = None
+    format_unit = None
+    if category in CHEMICAL_CATEGORIES:
+        normalized_type, format_size, format_unit, format_error = parse_format_type(item_type)
+        if format_error:
+            return None, format_error
+        item_type = normalized_type
+        if unit.lower() != format_unit:
+            return None, "unit must match the type format unit (e.g., ltr or kg)"
+
+    if category in CHEMICAL_CATEGORIES:
+        quantity, quantity_error = parse_number(data.get("quantity"), "quantity")
+    else:
+        quantity, quantity_error = parse_integer(data.get("quantity"), "quantity")
 
     if category_uses_dimensions(category) and not all([width, height]):
         return None, "width and height are required for this category"
@@ -142,7 +260,7 @@ def build_item_payload(data):
         return None, quantity_error
 
     now = datetime.utcnow()
-    return {
+    payload = {
         "category": category,
         "brand": brand,
         "type": item_type,
@@ -154,7 +272,11 @@ def build_item_payload(data):
         "unit": unit,
         "created_at": now,
         "updated_at": now,
-    }, None
+    }
+    if format_size is not None:
+        payload["format_size"] = format_size
+        payload["format_unit"] = format_unit
+    return payload, None
 
 
 def build_lookup(data):
@@ -165,8 +287,17 @@ def build_lookup(data):
     height = normalize_dimension(data.get("height"))
     thickness = parse_optional_text(data.get("thickness"))
 
-    if not all([category, brand, item_type]):
-        return None, "category, brand, and type are required"
+    if not category:
+        return None, "category is required"
+
+    if category in NO_BRAND_TYPE_CATEGORIES:
+        brand = "__none__"
+        item_type = "__none__"
+
+    if category_requires_brand(category) and not brand:
+        return None, "brand is required"
+    if category_requires_type(category) and not item_type:
+        return None, "type is required"
 
     if category_uses_dimensions(category) and not all([width, height]):
         return None, "width and height are required for this category"
@@ -405,17 +536,24 @@ def update_stock():
     if error:
         return jsonify({"error": error}), 400
 
-    quantity_change, quantity_error = parse_integer(
-        data.get("quantity_change"),
-        "quantity_change",
-        allow_negative=True,
-    )
-    if quantity_error:
-        return jsonify({"error": quantity_error}), 400
-
     item = inventory_collection.find_one(lookup)
     if not item:
         return jsonify({"error": "Item not found"}), 404
+
+    if item.get("category") in CHEMICAL_CATEGORIES:
+        quantity_change, quantity_error = parse_number(
+            data.get("quantity_change"),
+            "quantity_change",
+            allow_negative=True,
+        )
+    else:
+        quantity_change, quantity_error = parse_integer(
+            data.get("quantity_change"),
+            "quantity_change",
+            allow_negative=True,
+        )
+    if quantity_error:
+        return jsonify({"error": quantity_error}), 400
 
     new_quantity = item["quantity"] + quantity_change
     if new_quantity < 0:
