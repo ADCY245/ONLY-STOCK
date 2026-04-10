@@ -755,6 +755,8 @@ async function handleAddItem(event) {
         return;
     }
 
+    const categoryRule = getCategoryRule(formCategorySelect.value.trim());
+
     const payload = {
         category: formCategorySelect.value.trim(),
         brand: categoryRule.requiresBrand ? formData.get("brand").trim() : "",
