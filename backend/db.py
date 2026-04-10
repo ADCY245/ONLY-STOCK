@@ -4,13 +4,33 @@ from pymongo import MongoClient
 from pymongo.uri_parser import parse_uri
 
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/inventory_app")
-client = MongoClient(MONGODB_URI)
+DEFAULT_MONGODB_URI = "mongodb://localhost:27017/inventory_app"
+_client = None
+_database = None
+
+
+def get_mongodb_uri():
+    return os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or DEFAULT_MONGODB_URI
+
+
+def get_client():
+    global _client
+
+    if _client is None:
+        _client = MongoClient(get_mongodb_uri(), serverSelectionTimeoutMS=5000)
+
+    return _client
 
 
 def get_database():
-    database_name = parse_uri(MONGODB_URI).get("database") or "inventory_app"
-    return client[database_name]
+    global _database
+
+    if _database is None:
+        mongodb_uri = get_mongodb_uri()
+        database_name = parse_uri(mongodb_uri).get("database") or "inventory_app"
+        _database = get_client()[database_name]
+
+    return _database
 
 
 def get_inventory_collection():

@@ -17,10 +17,6 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 
-db = get_database()
-inventory_collection = get_inventory_collection()
-stock_logs_collection = get_stock_logs_collection()
-
 EXCEL_COLUMNS = ["Category", "Brand", "Type", "Size", "Quantity", "Unit"]
 DEFAULT_LOW_STOCK_THRESHOLD = 5
 
@@ -139,6 +135,7 @@ def serialize_log(log):
 
 
 def log_stock_change(item, action, quantity_before, quantity_after, source):
+    stock_logs_collection = get_stock_logs_collection()
     stock_logs_collection.insert_one(
         {
             "item_key": build_item_key(item),
@@ -214,14 +211,27 @@ def home():
 
 @app.route("/health")
 def health():
-    return {
-        "status": "ok",
-        "database": db.name,
-    }
+    try:
+        database = get_database()
+        database.command("ping")
+        return {
+            "status": "ok",
+            "database": database.name,
+        }
+    except Exception as exc:
+        return (
+            {
+                "status": "degraded",
+                "database": "unavailable",
+                "error": str(exc),
+            },
+            503,
+        )
 
 
 @app.route("/add-item", methods=["POST"])
 def add_item():
+    inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     item, error = build_item_payload(data)
 
@@ -240,6 +250,7 @@ def add_item():
 
 @app.route("/inventory", methods=["GET"])
 def get_inventory():
+    inventory_collection = get_inventory_collection()
     query, error = create_inventory_query(request.args)
     if error:
         return jsonify({"error": error}), 400
@@ -252,6 +263,7 @@ def get_inventory():
 
 @app.route("/stock-logs", methods=["GET"])
 def get_stock_logs():
+    stock_logs_collection = get_stock_logs_collection()
     limit, error = parse_integer(request.args.get("limit", 50), "limit")
     if error:
         return jsonify({"error": error}), 400
@@ -262,6 +274,7 @@ def get_stock_logs():
 
 @app.route("/update-stock", methods=["PUT"])
 def update_stock():
+    inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
     if error:
@@ -311,6 +324,7 @@ def update_stock():
 
 @app.route("/delete-item", methods=["DELETE"])
 def delete_item():
+    inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
     if error:
@@ -327,6 +341,7 @@ def delete_item():
 
 @app.route("/upload-excel", methods=["POST"])
 def upload_excel():
+    inventory_collection = get_inventory_collection()
     uploaded_file = request.files.get("file")
     if uploaded_file is None or uploaded_file.filename == "":
         return jsonify({"error": "Excel file is required"}), 400
@@ -405,6 +420,7 @@ def upload_excel():
 
 @app.route("/export-excel", methods=["GET"])
 def export_excel():
+    inventory_collection = get_inventory_collection()
     items = list(
         inventory_collection.find().sort(
             [("category", 1), ("brand", 1), ("type", 1), ("size", 1)]
@@ -440,4 +456,5 @@ def export_excel():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(debug=True, host="0.0.0.0", port=port)
+    debug = os.getenv("FLASK_DEBUG", "").lower() in {"1", "true", "yes"}
+    app.run(debug=debug, host="0.0.0.0", port=port)
