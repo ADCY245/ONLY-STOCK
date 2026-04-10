@@ -149,8 +149,17 @@
                             <input type="text" name="type" placeholder="UV" required>
                         </label>
                         <label>
-                            Size
-                            <input type="text" name="size" placeholder="740x520" required>
+                            Width
+                            <input id="formWidthInput" type="text" name="width" placeholder="1040">
+                        </label>
+                        <label>
+                            Height
+                            <input id="formHeightInput" type="text" name="height" placeholder="920">
+                        </label>
+                        <label>
+                            Thickness
+                            <input id="formThicknessInput" type="text" name="thickness" placeholder="1.95">
+                            <small id="thicknessHint" class="field-hint">Use thickness where applicable.</small>
                         </label>
                         <label>
                             Quantity
@@ -197,6 +206,10 @@
                             </select>
                         </label>
                         <label>
+                            Thickness
+                            <input id="thicknessFilter" type="text" placeholder="Filter by thickness">
+                        </label>
+                        <label>
                             Type
                             <select id="typeFilter">
                                 <option value="">All types</option>
@@ -228,7 +241,9 @@
                                     <th>Category</th>
                                     <th>Brand</th>
                                     <th>Type</th>
-                                    <th>Size</th>
+                                    <th>Width</th>
+                                    <th>Height</th>
+                                    <th>Thickness</th>
                                     <th>Quantity</th>
                                     <th>Unit</th>
                                     <th>Stock Movement</th>
@@ -237,7 +252,7 @@
                             </thead>
                             <tbody id="inventoryTableBody">
                                 <tr>
-                                    <td colspan="8" class="empty-state">No inventory available</td>
+                                    <td colspan="10" class="empty-state">No inventory available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -296,7 +311,9 @@
             <td data-field="category"></td>
             <td data-field="brand"></td>
             <td data-field="type"></td>
-            <td data-field="size"></td>
+            <td data-field="width"></td>
+            <td data-field="height"></td>
+            <td data-field="thickness"></td>
             <td data-field="quantity"></td>
             <td data-field="unit"></td>
             <td>

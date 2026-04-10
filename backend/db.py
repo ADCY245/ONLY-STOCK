@@ -36,7 +36,14 @@ def get_database():
 def get_inventory_collection():
     collection = get_database()["inventory_items"]
     collection.create_index(
-        [("category", 1), ("brand", 1), ("type", 1), ("size", 1)],
+        [
+            ("category", 1),
+            ("brand", 1),
+            ("type", 1),
+            ("width", 1),
+            ("height", 1),
+            ("thickness", 1),
+        ],
         unique=True,
     )
     return collection

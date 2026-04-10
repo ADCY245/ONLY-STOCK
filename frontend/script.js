@@ -70,8 +70,13 @@ const brandFilter = document.getElementById("brandFilter");
 const typeFilter = document.getElementById("typeFilter");
 const lowStockOnly = document.getElementById("lowStockOnly");
 const lowStockThreshold = document.getElementById("lowStockThreshold");
+const thicknessFilter = document.getElementById("thicknessFilter");
 const formCategorySelect = document.getElementById("formCategorySelect");
 const formUnitSelect = document.getElementById("formUnitSelect");
+const formWidthInput = document.getElementById("formWidthInput");
+const formHeightInput = document.getElementById("formHeightInput");
+const formThicknessInput = document.getElementById("formThicknessInput");
+const thicknessHint = document.getElementById("thicknessHint");
 
 const CATEGORY_OPTIONS = [
     { code: "01", label: "Rubber Blankets" },
@@ -122,6 +127,102 @@ const UNIT_OPTIONS = [
     "ml",
 ];
 
+const CATEGORY_RULES = {
+    "Rubber Blankets": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "mm",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Metalback Blankets": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "mm",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Underlay Blanket": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "micron",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Calibrated Underpacking Paper": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "micron",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Calibrated Underpacking Film": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "micron",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Creasing Matrix": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "mm",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Cutting Rules": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "pt",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Creasing Rules": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "pt",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Litho Perforation Rules": {
+        usesDimensions: true,
+        requiresThickness: true,
+        thicknessUnit: "pt",
+        unitOptions: ["pcs", "rolls"],
+        defaultUnit: "pcs",
+    },
+    "Washing Solutions": {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: ["ltr", "kg"],
+        defaultUnit: "ltr",
+    },
+    "Fountain Solutions": {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: ["ltr", "kg"],
+        defaultUnit: "ltr",
+    },
+    "Plate Care Products": {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: ["ltr", "kg"],
+        defaultUnit: "ltr",
+    },
+    "Roller Care Products": {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: ["ltr", "kg"],
+        defaultUnit: "ltr",
+    },
+    "Blanket Maintenance Products": {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: ["ltr", "kg"],
+        defaultUnit: "ltr",
+    },
+};
+
 function setMessage(element, text, tone = "") {
     element.textContent = text || "";
     if (tone) {
@@ -155,6 +256,48 @@ function showPage(page) {
     applyPageMeta(page);
 }
 
+function getCategoryRule(category) {
+    return CATEGORY_RULES[category] || {
+        usesDimensions: false,
+        requiresThickness: false,
+        unitOptions: UNIT_OPTIONS,
+        defaultUnit: "pcs",
+    };
+}
+
+function updateCategoryDrivenFields() {
+    const rule = getCategoryRule(formCategorySelect.value);
+    const previousUnit = formUnitSelect.value;
+
+    formWidthInput.disabled = !rule.usesDimensions;
+    formHeightInput.disabled = !rule.usesDimensions;
+    formThicknessInput.disabled = !rule.requiresThickness;
+
+    if (!rule.usesDimensions) {
+        formWidthInput.value = "";
+        formHeightInput.value = "";
+    }
+    if (!rule.requiresThickness) {
+        formThicknessInput.value = "";
+        formThicknessInput.placeholder = "Not required";
+        thicknessHint.textContent = "Thickness is not required for this category.";
+    } else {
+        formThicknessInput.placeholder = `Enter thickness in ${rule.thicknessUnit}`;
+        thicknessHint.textContent = `Thickness unit for this category: ${rule.thicknessUnit}.`;
+    }
+
+    formUnitSelect.innerHTML = `
+        <option value="">Select unit</option>
+        ${rule.unitOptions.map((unit) => `<option value="${unit}">${unit}</option>`).join("")}
+    `;
+
+    if (rule.unitOptions.includes(previousUnit)) {
+        formUnitSelect.value = previousUnit;
+    } else {
+        formUnitSelect.value = rule.defaultUnit;
+    }
+}
+
 function buildParams() {
     const params = new URLSearchParams();
 
@@ -166,6 +309,9 @@ function buildParams() {
     }
     if (brandFilter.value) {
         params.set("brand", brandFilter.value);
+    }
+    if (thicknessFilter.value.trim()) {
+        params.set("thickness", thicknessFilter.value.trim());
     }
     if (typeFilter.value) {
         params.set("type", typeFilter.value);
@@ -179,7 +325,14 @@ function buildParams() {
 }
 
 function getItemKey(item) {
-    return `${item.category}|${item.brand}|${item.type}|${item.size}`;
+    return [
+        item.category,
+        item.brand,
+        item.type,
+        item.width || "-",
+        item.height || "-",
+        item.thickness || "-",
+    ].join("|");
 }
 
 function getLookupPayload(item) {
@@ -187,7 +340,9 @@ function getLookupPayload(item) {
         category: item.category,
         brand: item.brand,
         type: item.type,
-        size: item.size,
+        width: item.width,
+        height: item.height,
+        thickness: item.thickness,
     };
 }
 
@@ -241,22 +396,15 @@ function populateSelectOptions(items) {
     }
 
     const selectedFormCategory = formCategorySelect.value;
-    const selectedFormUnit = formUnitSelect.value;
     formCategorySelect.innerHTML = `
         <option value="">Select category</option>
         ${CATEGORY_OPTIONS.map((option) => `<option value="${option.label}">${option.code} - ${option.label}</option>`).join("")}
-    `;
-    formUnitSelect.innerHTML = `
-        <option value="">Select unit</option>
-        ${UNIT_OPTIONS.map((unit) => `<option value="${unit}">${unit}</option>`).join("")}
     `;
 
     if (CATEGORY_OPTIONS.some((option) => option.label === selectedFormCategory)) {
         formCategorySelect.value = selectedFormCategory;
     }
-    if (UNIT_OPTIONS.includes(selectedFormUnit)) {
-        formUnitSelect.value = selectedFormUnit;
-    }
+    updateCategoryDrivenFields();
 }
 
 function renderCategories(items) {
@@ -347,7 +495,7 @@ function renderTable(items) {
     statusText.textContent = `${items.length} item(s) found`;
 
     if (items.length === 0) {
-        inventoryTableBody.innerHTML = '<tr><td colspan="8" class="empty-state">No inventory available</td></tr>';
+        inventoryTableBody.innerHTML = '<tr><td colspan="10" class="empty-state">No inventory available</td></tr>';
         return;
     }
 
@@ -360,7 +508,9 @@ function renderTable(items) {
         row.querySelector('[data-field="category"]').textContent = item.category;
         row.querySelector('[data-field="brand"]').textContent = item.brand;
         row.querySelector('[data-field="type"]').textContent = item.type;
-        row.querySelector('[data-field="size"]').textContent = item.size;
+        row.querySelector('[data-field="width"]').textContent = item.width || "-";
+        row.querySelector('[data-field="height"]').textContent = item.height || "-";
+        row.querySelector('[data-field="thickness"]').textContent = item.thickness || "-";
         row.querySelector('[data-field="quantity"]').textContent = item.quantity;
         row.querySelector('[data-field="unit"]').textContent = item.unit;
 
@@ -439,6 +589,7 @@ async function loadLogs() {
 function validateForm(formData) {
     const categoryValue = formCategorySelect.value.trim();
     const unitValue = formUnitSelect.value.trim();
+    const categoryRule = getCategoryRule(categoryValue);
 
     if (!categoryValue) {
         return "category is required";
@@ -447,7 +598,7 @@ function validateForm(formData) {
         return "unit is required";
     }
 
-    const requiredFields = ["brand", "type", "size", "quantity"];
+    const requiredFields = ["brand", "type", "quantity"];
     for (const field of requiredFields) {
         const value = formData.get(field);
         if (typeof value === "string" && !value.trim()) {
@@ -461,6 +612,16 @@ function validateForm(formData) {
     const quantity = Number(formData.get("quantity"));
     if (!Number.isInteger(quantity) || quantity < 0) {
         return "quantity must be a non-negative integer";
+    }
+
+    if (categoryRule.usesDimensions) {
+        if (!formWidthInput.value.trim() || !formHeightInput.value.trim()) {
+            return "width and height are required for this category";
+        }
+    }
+
+    if (categoryRule.requiresThickness && !formThicknessInput.value.trim()) {
+        return `thickness is required in ${categoryRule.thicknessUnit}`;
     }
 
     return "";
@@ -480,7 +641,9 @@ async function handleAddItem(event) {
         category: formCategorySelect.value.trim(),
         brand: formData.get("brand").trim(),
         type: formData.get("type").trim(),
-        size: formData.get("size").trim(),
+        width: formWidthInput.value.trim(),
+        height: formHeightInput.value.trim(),
+        thickness: formThicknessInput.value.trim(),
         quantity: Number(formData.get("quantity")),
         unit: formUnitSelect.value.trim(),
     };
@@ -492,6 +655,7 @@ async function handleAddItem(event) {
         });
 
         itemForm.reset();
+        updateCategoryDrivenFields();
         setMessage(formMessage, "Item added successfully", "success");
         if (window.location.hash !== "#inventory") {
             window.location.hash = "#inventory";
@@ -627,6 +791,7 @@ window.addEventListener("hashchange", () => {
 
 itemForm.addEventListener("submit", handleAddItem);
 excelForm.addEventListener("submit", handleExcelUpload);
+formCategorySelect.addEventListener("change", updateCategoryDrivenFields);
 refreshButton.addEventListener("click", async () => {
     await Promise.all([loadInventory(), loadLogs()]);
 });
@@ -636,9 +801,11 @@ inventoryTableBody.addEventListener("click", handleTableClick);
 searchInput.addEventListener("input", debouncedLoadInventory);
 categoryFilter.addEventListener("change", loadInventory);
 brandFilter.addEventListener("change", loadInventory);
+thicknessFilter.addEventListener("input", debouncedLoadInventory);
 typeFilter.addEventListener("change", loadInventory);
 lowStockOnly.addEventListener("change", loadInventory);
 lowStockThreshold.addEventListener("input", debouncedLoadInventory);
 
 showPage(getCurrentPage());
+updateCategoryDrivenFields();
 Promise.all([loadInventory(), loadLogs()]);

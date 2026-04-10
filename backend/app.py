@@ -19,8 +19,42 @@ app = Flask(__name__)
 CORS(app)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
-EXCEL_COLUMNS = ["Category", "Brand", "Type", "Size", "Quantity", "Unit"]
+EXCEL_COLUMNS = [
+    "Category",
+    "Brand",
+    "Type",
+    "Width",
+    "Height",
+    "Thickness",
+    "Quantity",
+    "Unit",
+]
 DEFAULT_LOW_STOCK_THRESHOLD = 5
+THICKNESS_REQUIRED_CATEGORIES = {
+    "Rubber Blankets",
+    "Metalback Blankets",
+    "Underlay Blanket",
+    "Calibrated Underpacking Paper",
+    "Calibrated Underpacking Film",
+    "Creasing Matrix",
+    "Cutting Rules",
+    "Creasing Rules",
+    "Litho Perforation Rules",
+}
+DIMENSIONAL_CATEGORIES = THICKNESS_REQUIRED_CATEGORIES | {
+    "Blanket Barring",
+    "Cutting String",
+    "Ejection Rubber",
+    "Strip Plate",
+    "Anti Marking Film",
+    "Ink Duct Foil",
+    "Productive Foil",
+    "Presspahn Sheets",
+    "Auto Wash Cloth",
+    "ICP Paper",
+    "Dampening Hose",
+    "Tesamol Tape",
+}
 
 
 def clean_text(value):
@@ -54,16 +88,55 @@ def parse_integer(value, field_name, allow_negative=False):
     return parsed, None
 
 
+def parse_optional_text(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return clean_text(value)
+    text = str(value).strip()
+    return text or None
+
+
+def category_requires_thickness(category):
+    return category in THICKNESS_REQUIRED_CATEGORIES
+
+
+def category_uses_dimensions(category):
+    return category in DIMENSIONAL_CATEGORIES
+
+
+def normalize_dimension(value):
+    parsed = parse_optional_text(value)
+    if parsed is None:
+        return None
+    compact = re.sub(r"\s+", "", parsed)
+    return compact
+
+
+def build_size_label(width, height):
+    if width and height:
+        return f"{width} x {height}"
+    return width or height or None
+
+
 def build_item_payload(data):
     category = clean_text(data.get("category"))
     brand = clean_text(data.get("brand"))
     item_type = clean_text(data.get("type"))
-    size = clean_text(data.get("size"))
+    width = normalize_dimension(data.get("width"))
+    height = normalize_dimension(data.get("height"))
+    thickness = parse_optional_text(data.get("thickness"))
     unit = clean_text(data.get("unit"))
     quantity, quantity_error = parse_integer(data.get("quantity"), "quantity")
 
-    if not all([category, brand, item_type, size, unit]):
-        return None, "category, brand, type, size, and unit are required"
+    if not all([category, brand, item_type, unit]):
+        return None, "category, brand, type, quantity, and unit are required"
+
+    if category_uses_dimensions(category) and not all([width, height]):
+        return None, "width and height are required for this category"
+
+    if category_requires_thickness(category) and not thickness:
+        return None, "thickness is required for this category"
 
     if quantity_error:
         return None, quantity_error
@@ -73,7 +146,10 @@ def build_item_payload(data):
         "category": category,
         "brand": brand,
         "type": item_type,
-        "size": size,
+        "width": width,
+        "height": height,
+        "size": build_size_label(width, height),
+        "thickness": thickness,
         "quantity": quantity,
         "unit": unit,
         "created_at": now,
@@ -85,22 +161,39 @@ def build_lookup(data):
     category = clean_text(data.get("category"))
     brand = clean_text(data.get("brand"))
     item_type = clean_text(data.get("type"))
-    size = clean_text(data.get("size"))
+    width = normalize_dimension(data.get("width"))
+    height = normalize_dimension(data.get("height"))
+    thickness = parse_optional_text(data.get("thickness"))
 
-    if not all([category, brand, item_type, size]):
-        return None, "category, brand, type, and size are required"
+    if not all([category, brand, item_type]):
+        return None, "category, brand, and type are required"
+
+    if category_uses_dimensions(category) and not all([width, height]):
+        return None, "width and height are required for this category"
+
+    if category_requires_thickness(category) and not thickness:
+        return None, "thickness is required for this category"
 
     return {
         "category": category,
         "brand": brand,
         "type": item_type,
-        "size": size,
+        "width": width,
+        "height": height,
+        "thickness": thickness,
     }, None
 
 
 def build_item_key(lookup):
     return "|".join(
-        [lookup["category"], lookup["brand"], lookup["type"], lookup["size"]]
+        [
+            lookup["category"],
+            lookup["brand"],
+            lookup["type"],
+            lookup.get("width") or "-",
+            lookup.get("height") or "-",
+            lookup.get("thickness") or "-",
+        ]
     )
 
 
@@ -110,7 +203,10 @@ def serialize_item(item):
         "category": item["category"],
         "brand": item["brand"],
         "type": item["type"],
-        "size": item["size"],
+        "width": item.get("width"),
+        "height": item.get("height"),
+        "size": item.get("size"),
+        "thickness": item.get("thickness"),
         "quantity": item["quantity"],
         "unit": item["unit"],
         "created_at": item["created_at"].isoformat() if item.get("created_at") else None,
@@ -127,6 +223,9 @@ def serialize_log(log):
         "brand": log["brand"],
         "type": log["type"],
         "size": log["size"],
+        "width": log.get("width"),
+        "height": log.get("height"),
+        "thickness": log.get("thickness"),
         "quantity_before": log["quantity_before"],
         "quantity_after": log["quantity_after"],
         "quantity_change": log["quantity_change"],
@@ -146,6 +245,9 @@ def log_stock_change(item, action, quantity_before, quantity_after, source):
             "brand": item["brand"],
             "type": item["type"],
             "size": item["size"],
+            "width": item.get("width"),
+            "height": item.get("height"),
+            "thickness": item.get("thickness"),
             "quantity_before": quantity_before,
             "quantity_after": quantity_after,
             "quantity_change": quantity_after - quantity_before,
@@ -164,6 +266,7 @@ def create_inventory_query(args):
     item_type = clean_text(args.get("type"))
     search = clean_text(args.get("search"))
     low_stock = str(args.get("low_stock", "")).lower() in {"1", "true", "yes"}
+    thickness = parse_optional_text(args.get("thickness"))
 
     if category:
         query["category"] = {"$regex": f"^{re.escape(category)}$", "$options": "i"}
@@ -171,6 +274,8 @@ def create_inventory_query(args):
         query["brand"] = {"$regex": f"^{re.escape(brand)}$", "$options": "i"}
     if item_type:
         query["type"] = {"$regex": f"^{re.escape(item_type)}$", "$options": "i"}
+    if thickness:
+        query["thickness"] = {"$regex": f"^{re.escape(thickness)}$", "$options": "i"}
 
     if search:
         regex = {"$regex": re.escape(search), "$options": "i"}
@@ -198,7 +303,9 @@ def process_excel_row(row):
             "category": row.get("Category"),
             "brand": row.get("Brand"),
             "type": row.get("Type"),
-            "size": row.get("Size"),
+            "width": row.get("Width"),
+            "height": row.get("Height"),
+            "thickness": row.get("Thickness"),
             "quantity": row.get("Quantity"),
             "unit": row.get("Unit"),
         }
@@ -267,7 +374,14 @@ def get_inventory():
         return jsonify({"error": error}), 400
 
     items = inventory_collection.find(query).sort(
-        [("category", 1), ("brand", 1), ("type", 1), ("size", 1)]
+        [
+            ("category", 1),
+            ("brand", 1),
+            ("type", 1),
+            ("width", 1),
+            ("height", 1),
+            ("thickness", 1),
+        ]
     )
     return jsonify([serialize_item(item) for item in items])
 
@@ -312,11 +426,16 @@ def update_stock():
         "updated_at": datetime.utcnow(),
     }
 
+    if data.get("thickness") is not None:
+        updates["thickness"] = parse_optional_text(data.get("thickness"))
+
     if data.get("unit") is not None:
         unit = clean_text(data.get("unit"))
         if not unit:
             return jsonify({"error": "unit cannot be empty"}), 400
         updates["unit"] = unit
+
+    updates["size"] = build_size_label(item.get("width"), item.get("height"))
 
     inventory_collection.update_one(lookup, {"$set": updates})
     updated_item = inventory_collection.find_one(lookup)
@@ -395,7 +514,9 @@ def upload_excel():
                 "category": item["category"],
                 "brand": item["brand"],
                 "type": item["type"],
-                "size": item["size"],
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "thickness": item.get("thickness"),
             }
         )
 
@@ -406,6 +527,10 @@ def upload_excel():
                     "$set": {
                         "quantity": item["quantity"],
                         "unit": item["unit"],
+                        "size": item["size"],
+                        "width": item.get("width"),
+                        "height": item.get("height"),
+                        "thickness": item.get("thickness"),
                         "updated_at": datetime.utcnow(),
                     }
                 },
@@ -434,7 +559,14 @@ def export_excel():
     inventory_collection = get_inventory_collection()
     items = list(
         inventory_collection.find().sort(
-            [("category", 1), ("brand", 1), ("type", 1), ("size", 1)]
+            [
+                ("category", 1),
+                ("brand", 1),
+                ("type", 1),
+                ("width", 1),
+                ("height", 1),
+                ("thickness", 1),
+            ]
         )
     )
 
@@ -443,7 +575,9 @@ def export_excel():
             "Category": item["category"],
             "Brand": item["brand"],
             "Type": item["type"],
-            "Size": item["size"],
+            "Width": item.get("width"),
+            "Height": item.get("height"),
+            "Thickness": item.get("thickness"),
             "Quantity": item["quantity"],
             "Unit": item["unit"],
         }
