@@ -7,20 +7,62 @@ const state = {
     logs: [],
 };
 
+const PAGE_META = {
+    overview: {
+        eyebrow: "Dashboard",
+        title: "Inventory Overview",
+        description: "See your stock health and move into each workspace from the menu.",
+    },
+    "add-item": {
+        eyebrow: "Workspace",
+        title: "Add Inventory Item",
+        description: "Create new stock records with category, quantity, and unit details.",
+    },
+    inventory: {
+        eyebrow: "Workspace",
+        title: "Inventory Manager",
+        description: "Search, filter, update, and delete items from a dedicated page.",
+    },
+    excel: {
+        eyebrow: "Workspace",
+        title: "Excel Tools",
+        description: "Import bulk updates and export the current inventory to spreadsheet format.",
+    },
+    logs: {
+        eyebrow: "Workspace",
+        title: "Stock Logs",
+        description: "Review recent manual and Excel-driven stock changes in one place.",
+    },
+};
+
 const itemForm = document.getElementById("itemForm");
 const excelForm = document.getElementById("excelForm");
 const excelFileInput = document.getElementById("excelFile");
 const refreshButton = document.getElementById("refreshButton");
 const exportButton = document.getElementById("exportButton");
+const excelExportButton = document.getElementById("excelExportButton");
 const inventoryTableBody = document.getElementById("inventoryTableBody");
 const categoryList = document.getElementById("categoryList");
 const categoryCount = document.getElementById("categoryCount");
+const sidebarCategoryCount = document.getElementById("sidebarCategoryCount");
+const sidebarItemCount = document.getElementById("sidebarItemCount");
+const sidebarLogCount = document.getElementById("sidebarLogCount");
+const overviewItemCount = document.getElementById("overviewItemCount");
+const overviewCategoryCount = document.getElementById("overviewCategoryCount");
+const overviewLowStockCount = document.getElementById("overviewLowStockCount");
+const overviewLogBadge = document.getElementById("overviewLogBadge");
+const overviewLogs = document.getElementById("overviewLogs");
 const treeView = document.getElementById("treeView");
 const logsList = document.getElementById("logsList");
 const statusText = document.getElementById("statusText");
 const formMessage = document.getElementById("formMessage");
 const excelMessage = document.getElementById("excelMessage");
 const rowTemplate = document.getElementById("inventoryRowTemplate");
+const pageEyebrow = document.getElementById("pageEyebrow");
+const pageTitle = document.getElementById("pageTitle");
+const pageDescription = document.getElementById("pageDescription");
+const pages = [...document.querySelectorAll("[data-page]")];
+const pageLinks = [...document.querySelectorAll("[data-page-link]")];
 
 const searchInput = document.getElementById("searchInput");
 const categoryFilter = document.getElementById("categoryFilter");
@@ -68,6 +110,30 @@ function setMessage(element, text, tone = "") {
     } else {
         delete element.dataset.tone;
     }
+}
+
+function getCurrentPage() {
+    const page = window.location.hash.replace(/^#/, "");
+    return PAGE_META[page] ? page : "overview";
+}
+
+function applyPageMeta(page) {
+    const meta = PAGE_META[page];
+    pageEyebrow.textContent = meta.eyebrow;
+    pageTitle.textContent = meta.title;
+    pageDescription.textContent = meta.description;
+}
+
+function showPage(page) {
+    pages.forEach((section) => {
+        section.classList.toggle("is-active", section.dataset.page === page);
+    });
+
+    pageLinks.forEach((link) => {
+        link.classList.toggle("is-active", link.dataset.pageLink === page);
+    });
+
+    applyPageMeta(page);
 }
 
 function buildParams() {
@@ -174,6 +240,8 @@ function renderCategories(items) {
 
     const categories = Object.keys(counts).sort();
     categoryCount.textContent = String(categories.length);
+    sidebarCategoryCount.textContent = String(categories.length);
+    overviewCategoryCount.textContent = String(categories.length);
 
     if (categories.length === 0) {
         categoryList.innerHTML = '<li class="empty-state">No categories yet</li>';
@@ -239,6 +307,15 @@ function renderTree(items) {
     treeView.innerHTML = categoryMarkup;
 }
 
+function renderOverviewStats(items) {
+    const lowStockThresholdValue = Number(lowStockThreshold.value || "5");
+    const lowStockCount = items.filter((item) => item.quantity <= lowStockThresholdValue).length;
+
+    overviewItemCount.textContent = String(items.length);
+    sidebarItemCount.textContent = String(items.length);
+    overviewLowStockCount.textContent = String(lowStockCount);
+}
+
 function renderTable(items) {
     statusText.textContent = `${items.length} item(s) found`;
 
@@ -266,11 +343,27 @@ function renderTable(items) {
 
 function renderLogs(logs) {
     if (logs.length === 0) {
+        sidebarLogCount.textContent = "0";
+        overviewLogBadge.textContent = "0";
         logsList.innerHTML = '<p class="empty-state">No stock history yet</p>';
+        overviewLogs.innerHTML = '<p class="empty-state">No stock history yet</p>';
         return;
     }
 
-    logsList.innerHTML = logs.map((log) => `
+    sidebarLogCount.textContent = String(logs.length);
+    overviewLogBadge.textContent = String(logs.length);
+
+    const markup = logs.map((log) => `
+        <div class="log-entry">
+            <p><strong>${log.action}</strong> via ${log.source}</p>
+            <p>${log.category} / ${log.brand} / ${log.type} / ${log.size}</p>
+            <p>${log.quantity_before} -> ${log.quantity_after} ${log.unit}</p>
+            <p>${new Date(log.changed_at).toLocaleString()}</p>
+        </div>
+    `).join("");
+
+    logsList.innerHTML = markup;
+    overviewLogs.innerHTML = logs.slice(0, 4).map((log) => `
         <div class="log-entry">
             <p><strong>${log.action}</strong> via ${log.source}</p>
             <p>${log.category} / ${log.brand} / ${log.type} / ${log.size}</p>
@@ -291,6 +384,7 @@ async function loadInventory() {
 
         renderCategories(state.inventory);
         renderTree(state.inventory);
+        renderOverviewStats(state.inventory);
         renderTable(state.inventory);
         populateSelectOptions(state.inventory);
         setMessage(statusText, `${state.inventory.length} item(s) found`);
@@ -298,6 +392,7 @@ async function loadInventory() {
         state.inventory = [];
         renderCategories([]);
         renderTree([]);
+        renderOverviewStats([]);
         renderTable([]);
         setMessage(statusText, error.message, "error");
     }
@@ -310,6 +405,7 @@ async function loadLogs() {
         renderLogs(state.logs);
     } catch (error) {
         logsList.innerHTML = `<p class="empty-state">${error.message}</p>`;
+        overviewLogs.innerHTML = `<p class="empty-state">${error.message}</p>`;
     }
 }
 
@@ -366,6 +462,9 @@ async function handleAddItem(event) {
 
         itemForm.reset();
         setMessage(formMessage, "Item added successfully", "success");
+        if (window.location.hash !== "#inventory") {
+            window.location.hash = "#inventory";
+        }
         await Promise.all([loadInventory(), loadLogs()]);
     } catch (error) {
         setMessage(formMessage, error.message, "error");
@@ -485,12 +584,17 @@ function debounce(callback, delay = 300) {
 
 const debouncedLoadInventory = debounce(loadInventory, 250);
 
+window.addEventListener("hashchange", () => {
+    showPage(getCurrentPage());
+});
+
 itemForm.addEventListener("submit", handleAddItem);
 excelForm.addEventListener("submit", handleExcelUpload);
 refreshButton.addEventListener("click", async () => {
     await Promise.all([loadInventory(), loadLogs()]);
 });
 exportButton.addEventListener("click", handleExportExcel);
+excelExportButton.addEventListener("click", handleExportExcel);
 inventoryTableBody.addEventListener("click", handleTableClick);
 searchInput.addEventListener("input", debouncedLoadInventory);
 categoryFilter.addEventListener("change", loadInventory);
@@ -499,4 +603,5 @@ typeFilter.addEventListener("change", loadInventory);
 lowStockOnly.addEventListener("change", loadInventory);
 lowStockThreshold.addEventListener("input", debouncedLoadInventory);
 
+showPage(getCurrentPage());
 Promise.all([loadInventory(), loadLogs()]);
