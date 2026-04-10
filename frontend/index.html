@@ -158,7 +158,9 @@
                         </label>
                         <label>
                             Unit
-                            <input type="text" name="unit" placeholder="pcs" required>
+                            <select id="formUnitSelect" name="unit" required>
+                                <option value="">Select unit</option>
+                            </select>
                         </label>
                         <div class="form-actions">
                             <button class="primary-button" type="submit">Add Item</button>
@@ -215,7 +217,7 @@
                     <div class="section-heading">
                         <div>
                             <h3>Inventory Table</h3>
-                            <p>Update stock with positive or negative values. Quantity never goes below zero.</p>
+                            <p>Record stock coming in or going out. Quantity never goes below zero.</p>
                         </div>
                     </div>
 
@@ -229,7 +231,7 @@
                                     <th>Size</th>
                                     <th>Quantity</th>
                                     <th>Unit</th>
-                                    <th>Update Stock</th>
+                                    <th>Stock Movement</th>
                                     <th>Delete</th>
                                 </tr>
                             </thead>
@@ -299,8 +301,12 @@
             <td data-field="unit"></td>
             <td>
                 <div class="update-controls">
-                    <input class="delta-input" type="number" value="1" step="1">
-                    <button class="secondary-button update-button" type="button">Update</button>
+                    <select class="movement-select">
+                        <option value="in">Stock In</option>
+                        <option value="out">Stock Out</option>
+                    </select>
+                    <input class="delta-input" type="number" value="1" min="1" step="1">
+                    <button class="secondary-button update-button" type="button">Apply</button>
                 </div>
             </td>
             <td>

@@ -71,6 +71,7 @@ const typeFilter = document.getElementById("typeFilter");
 const lowStockOnly = document.getElementById("lowStockOnly");
 const lowStockThreshold = document.getElementById("lowStockThreshold");
 const formCategorySelect = document.getElementById("formCategorySelect");
+const formUnitSelect = document.getElementById("formUnitSelect");
 
 const CATEGORY_OPTIONS = [
     { code: "01", label: "Rubber Blankets" },
@@ -101,6 +102,24 @@ const CATEGORY_OPTIONS = [
     { code: "26", label: "Sponges" },
     { code: "27", label: "Dampening Hose" },
     { code: "28", label: "Tesamol Tape" },
+];
+
+const UNIT_OPTIONS = [
+    "pcs",
+    "box",
+    "boxes",
+    "pack",
+    "packs",
+    "roll",
+    "rolls",
+    "sheet",
+    "sheets",
+    "set",
+    "sets",
+    "kg",
+    "g",
+    "ltr",
+    "ml",
 ];
 
 function setMessage(element, text, tone = "") {
@@ -222,13 +241,21 @@ function populateSelectOptions(items) {
     }
 
     const selectedFormCategory = formCategorySelect.value;
+    const selectedFormUnit = formUnitSelect.value;
     formCategorySelect.innerHTML = `
         <option value="">Select category</option>
         ${CATEGORY_OPTIONS.map((option) => `<option value="${option.label}">${option.code} - ${option.label}</option>`).join("")}
     `;
+    formUnitSelect.innerHTML = `
+        <option value="">Select unit</option>
+        ${UNIT_OPTIONS.map((unit) => `<option value="${unit}">${unit}</option>`).join("")}
+    `;
 
     if (CATEGORY_OPTIONS.some((option) => option.label === selectedFormCategory)) {
         formCategorySelect.value = selectedFormCategory;
+    }
+    if (UNIT_OPTIONS.includes(selectedFormUnit)) {
+        formUnitSelect.value = selectedFormUnit;
     }
 }
 
@@ -411,12 +438,16 @@ async function loadLogs() {
 
 function validateForm(formData) {
     const categoryValue = formCategorySelect.value.trim();
+    const unitValue = formUnitSelect.value.trim();
 
     if (!categoryValue) {
         return "category is required";
     }
+    if (!unitValue) {
+        return "unit is required";
+    }
 
-    const requiredFields = ["brand", "type", "size", "quantity", "unit"];
+    const requiredFields = ["brand", "type", "size", "quantity"];
     for (const field of requiredFields) {
         const value = formData.get(field);
         if (typeof value === "string" && !value.trim()) {
@@ -451,7 +482,7 @@ async function handleAddItem(event) {
         type: formData.get("type").trim(),
         size: formData.get("size").trim(),
         quantity: Number(formData.get("quantity")),
-        unit: formData.get("unit").trim(),
+        unit: formUnitSelect.value.trim(),
     };
 
     try {
@@ -551,12 +582,17 @@ async function handleTableClick(event) {
 
     if (button.classList.contains("update-button")) {
         const input = row.querySelector(".delta-input");
-        const quantityChange = Number(input.value);
+        const movementSelect = row.querySelector(".movement-select");
+        const movementAmount = Number(input.value);
 
-        if (!Number.isInteger(quantityChange)) {
-            window.alert("quantity_change must be a whole number");
+        if (!Number.isInteger(movementAmount) || movementAmount <= 0) {
+            window.alert("stock movement must be a whole number greater than 0");
             return;
         }
+
+        const quantityChange = movementSelect.value === "out"
+            ? -movementAmount
+            : movementAmount;
 
         try {
             await request("/update-stock", {
@@ -567,6 +603,7 @@ async function handleTableClick(event) {
                 }),
             });
             input.value = "1";
+            movementSelect.value = "in";
             await Promise.all([loadInventory(), loadLogs()]);
         } catch (error) {
             window.alert(error.message);
