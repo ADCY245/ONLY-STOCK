@@ -285,7 +285,7 @@ def build_item_payload(data):
     if quantity_error:
         return None, quantity_error
 
-    now = datetime.utcnow()
+    now = datetime.now()
     payload = {
         "category": category,
         "brand": brand,
@@ -420,7 +420,7 @@ def log_stock_change(item, action, quantity_before, quantity_after, source):
             "quantity_change": quantity_after - quantity_before,
             "unit": item["unit"],
             "source": source,
-            "changed_at": datetime.utcnow(),
+            "changed_at": datetime.now(),
         }
     )
 
@@ -600,7 +600,7 @@ def update_stock():
 
     updates = {
         "quantity": new_quantity,
-        "updated_at": datetime.utcnow(),
+        "updated_at": datetime.now(),
     }
 
     if data.get("thickness") is not None:
@@ -711,7 +711,7 @@ def upload_excel():
                         "width": item.get("width"),
                         "height": item.get("height"),
                         "thickness": item.get("thickness"),
-                        "updated_at": datetime.utcnow(),
+                        "updated_at": datetime.now(),
                     }
                 },
             )
