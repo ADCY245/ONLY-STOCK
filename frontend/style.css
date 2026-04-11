@@ -381,7 +381,8 @@ select {
 }
 
 input:disabled,
-select:disabled {
+select:disabled,
+input[readonly] {
     background: #f3eee5;
     color: #8a8f98;
     cursor: not-allowed;

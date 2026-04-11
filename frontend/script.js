@@ -88,6 +88,7 @@ const formThicknessInput = document.getElementById("formThicknessInput");
 const formQuantityInput = document.getElementById("formQuantityInput");
 const thicknessHint = document.getElementById("thicknessHint");
 const quantityHint = document.getElementById("quantityHint");
+const lengthLabelText = document.getElementById("lengthLabelText");
 
 const formBrandInput = itemForm.querySelector('input[name="brand"]');
 const formTypeInput = itemForm.querySelector('input[name="type"]');
@@ -467,14 +468,23 @@ function updateCategoryDrivenFields() {
 
     const selectedIsRoll = isRollItem(formUnitSelect.value);
     if (selectedIsRoll) {
+        lengthLabelText.textContent = "Length (mtr)";
+        formHeightInput.placeholder = "30";
+        formQuantityInput.readOnly = true;
         formQuantityInput.step = "0.0001";
         formQuantityInput.placeholder = "Auto-calculated in sq.m";
-        quantityHint.textContent = "Roll quantity is stored as sq.m. Enter width in mm and height/length in mtr.";
+        quantityHint.textContent = "Roll quantity is calculated in sq.m from width and length.";
     } else if (rule.quantityAllowsDecimal) {
+        lengthLabelText.textContent = "Length";
+        formHeightInput.placeholder = "920";
+        formQuantityInput.readOnly = false;
         formQuantityInput.step = "0.01";
         formQuantityInput.placeholder = "10";
         quantityHint.textContent = "Decimals are allowed for this category.";
     } else {
+        lengthLabelText.textContent = "Length";
+        formHeightInput.placeholder = "920";
+        formQuantityInput.readOnly = false;
         formQuantityInput.step = "1";
         formQuantityInput.placeholder = "10";
         quantityHint.textContent = "Use the item's stock unit.";
@@ -496,6 +506,7 @@ function updateRollQuantityEstimate() {
     }
     const area = getRollAreaSqm(formWidthInput.value, formHeightInput.value);
     if (area === null) {
+        formQuantityInput.value = "";
         return;
     }
     formQuantityInput.value = String(roundStockQuantity(area));
@@ -1049,7 +1060,7 @@ function validateForm(formData) {
 
     if (categoryRule.usesDimensions) {
         if (!formWidthInput.value.trim() || !formHeightInput.value.trim()) {
-            return "width and height are required for this category";
+            return "width and length are required for this category";
         }
     }
 
@@ -1076,11 +1087,6 @@ async function handleAddItem(event) {
     }
 
     const categoryRule = getCategoryRule(formCategorySelect.value.trim());
-    const reason = await promptForReason("Add Item Reason", "Why are you adding this item?");
-    if (!reason) {
-        setMessage(formMessage, "Item add cancelled", "error");
-        return;
-    }
 
     const payload = {
         category: formCategorySelect.value.trim(),
@@ -1094,7 +1100,6 @@ async function handleAddItem(event) {
         thickness: formThicknessInput.value.trim(),
         quantity: Number(formData.get("quantity")),
         unit: formUnitSelect.value.trim(),
-        reason,
     };
 
     try {

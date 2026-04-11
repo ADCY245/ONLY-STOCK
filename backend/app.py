@@ -25,7 +25,7 @@ REQUIRED_EXCEL_COLUMNS = [
     "Brand",
     "Type",
     "Width",
-    "Height",
+    "Length",
     "Thickness",
     "Quantity",
     "Unit",
@@ -36,7 +36,7 @@ EXCEL_COLUMNS = [
     "Type",
     "Batch/Roll No",
     "Width",
-    "Height",
+    "Length",
     "Thickness",
     "Quantity",
     "Unit",
@@ -239,10 +239,10 @@ def normalize_dimension(value):
     return normalize_optional_dimension(value)
 
 
-def build_size_label(width, height):
-    if width and height:
-        return f"{width} x {height}"
-    return width or height or None
+def build_size_label(width, length):
+    if width and length:
+        return f"{width} x {length}"
+    return width or length or None
 
 
 def requires_batch_roll_no(category, unit):
@@ -315,7 +315,7 @@ def build_item_payload(data):
         quantity, quantity_error = parse_integer(data.get("quantity"), "quantity")
 
     if category_uses_dimensions(category) and not all([width, height]):
-        return None, "width and height are required for this category"
+        return None, "width and length are required for this category"
 
     if category_requires_thickness(category) and not thickness:
         return None, "thickness is required for this category"
@@ -325,7 +325,7 @@ def build_item_payload(data):
     if is_roll_unit(unit):
         roll_area = calculate_roll_area_sqm(width, height)
         if roll_area is None:
-            return None, "width and height/length must be numeric for roll sq.m calculation"
+            return None, "width and length must be numeric for roll sq.m calculation"
         quantity = roll_area
 
     now = now_ist()
@@ -374,7 +374,7 @@ def build_lookup(data):
         batch_roll_no = None
 
     if category_uses_dimensions(category) and not all([width, height]):
-        return None, "width and height are required for this category"
+        return None, "width and length are required for this category"
 
     if category_requires_thickness(category) and not thickness:
         return None, "thickness is required for this category"
@@ -520,7 +520,7 @@ def process_excel_row(row):
             "type": row.get("Type"),
             "batch_roll_no": row.get("Batch/Roll No"),
             "width": row.get("Width"),
-            "height": row.get("Height"),
+            "height": row.get("Length", row.get("Height")),
             "thickness": row.get("Thickness"),
             "quantity": row.get("Quantity"),
             "unit": row.get("Unit"),
@@ -570,7 +570,7 @@ def build_export_rows(items):
             "Type": item["type"],
             "Batch/Roll No": item.get("batch_roll_no"),
             "Width": item.get("width"),
-            "Height": item.get("height"),
+            "Length": item.get("height"),
             "Thickness": item.get("thickness"),
             "Quantity": item["quantity"],
             "Unit": item["unit"],
@@ -792,7 +792,13 @@ def upload_excel():
     except Exception:
         return jsonify({"error": "Unable to read Excel file"}), 400
 
-    missing_columns = [column for column in REQUIRED_EXCEL_COLUMNS if column not in dataframe.columns]
+    missing_columns = []
+    for column in REQUIRED_EXCEL_COLUMNS:
+        if column == "Length":
+            if "Length" not in dataframe.columns and "Height" not in dataframe.columns:
+                missing_columns.append(column)
+        elif column not in dataframe.columns:
+            missing_columns.append(column)
     if missing_columns:
         return jsonify(
             {
@@ -803,6 +809,8 @@ def upload_excel():
         ), 400
 
     selected_columns = [column for column in EXCEL_COLUMNS if column in dataframe.columns]
+    if "Length" not in selected_columns and "Height" in dataframe.columns:
+        selected_columns.append("Height")
     records = dataframe[selected_columns].to_dict(orient="records")
     if not records:
         return jsonify({"error": "Excel file is empty"}), 400

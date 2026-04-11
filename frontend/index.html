@@ -149,6 +149,12 @@
                             <input type="text" name="type" placeholder="UV" required>
                         </label>
                         <label>
+                            Unit
+                            <select id="formUnitSelect" name="unit" required>
+                                <option value="">Select unit</option>
+                            </select>
+                        </label>
+                        <label>
                             Batch / Roll No.
                             <input id="formBatchRollNoInput" type="text" name="batch_roll_no" placeholder="BR-001">
                         </label>
@@ -157,7 +163,7 @@
                             <input id="formWidthInput" type="text" name="width" placeholder="1040">
                         </label>
                         <label>
-                            Height
+                            <span id="lengthLabelText">Length</span>
                             <input id="formHeightInput" type="text" name="height" placeholder="920">
                         </label>
                         <label>
@@ -169,12 +175,6 @@
                             Quantity
                             <input id="formQuantityInput" type="number" name="quantity" min="0" step="1" placeholder="10" required>
                             <small id="quantityHint" class="field-hint">Use the item's stock unit.</small>
-                        </label>
-                        <label>
-                            Unit
-                            <select id="formUnitSelect" name="unit" required>
-                                <option value="">Select unit</option>
-                            </select>
                         </label>
                         <div class="form-actions">
                             <button class="primary-button" type="submit">Add Item</button>
@@ -248,7 +248,7 @@
                                     <th>Type</th>
                                     <th>Batch / Roll No.</th>
                                     <th data-align="right">Width</th>
-                                    <th data-align="right">Height</th>
+                                    <th data-align="right">Length</th>
                                     <th data-align="right">Thickness</th>
                                     <th data-align="right">Quantity</th>
                                     <th>Unit</th>
