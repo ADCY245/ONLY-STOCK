@@ -149,6 +149,10 @@
                             <input type="text" name="type" placeholder="UV" required>
                         </label>
                         <label>
+                            Batch / Roll No.
+                            <input id="formBatchRollNoInput" type="text" name="batch_roll_no" placeholder="BR-001">
+                        </label>
+                        <label>
                             Width
                             <input id="formWidthInput" type="text" name="width" placeholder="1040">
                         </label>
@@ -241,6 +245,7 @@
                                     <th>Category</th>
                                     <th>Brand</th>
                                     <th>Type</th>
+                                    <th>Batch / Roll No.</th>
                                     <th>Width</th>
                                     <th>Height</th>
                                     <th>Thickness</th>
@@ -252,7 +257,7 @@
                             </thead>
                             <tbody id="inventoryTableBody">
                                 <tr>
-                                    <td colspan="10" class="empty-state">No inventory available</td>
+                                    <td colspan="11" class="empty-state">No inventory available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -311,6 +316,7 @@
             <td data-field="category"></td>
             <td data-field="brand"></td>
             <td data-field="type"></td>
+            <td data-field="batch_roll_no"></td>
             <td data-field="width"></td>
             <td data-field="height"></td>
             <td data-field="thickness"></td>

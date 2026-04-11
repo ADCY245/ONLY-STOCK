@@ -35,16 +35,31 @@ def get_database():
 
 def get_inventory_collection():
     collection = get_database()["inventory_items"]
+    legacy_key = [
+        ("category", 1),
+        ("brand", 1),
+        ("type", 1),
+        ("width", 1),
+        ("height", 1),
+        ("thickness", 1),
+    ]
+    for index_name, index_info in collection.index_information().items():
+        if index_name == "_id_":
+            continue
+        if index_info.get("key") == legacy_key and index_info.get("unique"):
+            collection.drop_index(index_name)
     collection.create_index(
         [
             ("category", 1),
             ("brand", 1),
             ("type", 1),
+            ("batch_roll_no", 1),
             ("width", 1),
             ("height", 1),
             ("thickness", 1),
         ],
         unique=True,
+        name="inventory_item_identity_v2",
     )
     return collection
 

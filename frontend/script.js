@@ -80,8 +80,10 @@ const thicknessHint = document.getElementById("thicknessHint");
 
 const formBrandInput = itemForm.querySelector('input[name="brand"]');
 const formTypeInput = itemForm.querySelector('input[name="type"]');
+const formBatchRollNoInput = itemForm.querySelector('input[name="batch_roll_no"]');
 const brandLabel = formBrandInput.closest("label");
 const typeLabel = formTypeInput.closest("label");
+const batchRollNoLabel = formBatchRollNoInput.closest("label");
 const widthLabel = formWidthInput.closest("label");
 const heightLabel = formHeightInput.closest("label");
 const thicknessLabel = formThicknessInput.closest("label");
@@ -144,6 +146,7 @@ const CATEGORY_RULES = {
         requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
+        supportsBatchRollNo: true,
     },
     "Metalback Blankets": {
         usesDimensions: true,
@@ -153,6 +156,7 @@ const CATEGORY_RULES = {
         requiresType: true,
         unitOptions: ["pcs", "rolls"],
         defaultUnit: "pcs",
+        supportsBatchRollNo: true,
     },
     "Underlay Blanket": {
         usesDimensions: true,
@@ -321,6 +325,11 @@ function getCategoryRule(category) {
     };
 }
 
+function requiresBatchRollNo(category, unit) {
+    const rule = getCategoryRule(category);
+    return Boolean(rule.supportsBatchRollNo && String(unit || "").trim().toLowerCase() === "rolls");
+}
+
 function updateCategoryDrivenFields() {
     const rule = getCategoryRule(formCategorySelect.value);
     const previousUnit = formUnitSelect.value;
@@ -343,6 +352,8 @@ function updateCategoryDrivenFields() {
     widthLabel.style.display = rule.usesDimensions ? "" : "none";
     heightLabel.style.display = rule.usesDimensions ? "" : "none";
     thicknessLabel.style.display = rule.requiresThickness ? "" : "none";
+    batchRollNoLabel.style.display = requiresBatchRollNo(formCategorySelect.value, formUnitSelect.value) ? "" : "none";
+    formBatchRollNoInput.disabled = !requiresBatchRollNo(formCategorySelect.value, formUnitSelect.value);
 
     if (!rule.usesDimensions) {
         formWidthInput.value = "";
@@ -355,6 +366,9 @@ function updateCategoryDrivenFields() {
     } else {
         formThicknessInput.placeholder = `Enter thickness in ${rule.thicknessUnit}`;
         thicknessHint.textContent = `Thickness unit for this category: ${rule.thicknessUnit}.`;
+    }
+    if (!requiresBatchRollNo(formCategorySelect.value, formUnitSelect.value)) {
+        formBatchRollNoInput.value = "";
     }
 
     formUnitSelect.innerHTML = `
@@ -418,6 +432,7 @@ function getItemKey(item) {
         item.category,
         item.brand,
         item.type,
+        item.batch_roll_no || "-",
         item.width || "-",
         item.height || "-",
         item.thickness || "-",
@@ -429,10 +444,35 @@ function getLookupPayload(item) {
         category: item.category,
         brand: item.brand,
         type: item.type,
+        batch_roll_no: item.batch_roll_no || "",
+        unit: item.unit,
         width: item.width,
         height: item.height,
         thickness: item.thickness,
     };
+}
+
+function isPlaceholderValue(value) {
+    if (typeof value !== "string") {
+        return false;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized === "__none__" || normalized === "none" || normalized === "_none";
+}
+
+function getDisplayValue(value) {
+    if (value == null) {
+        return "";
+    }
+    if (typeof value !== "string") {
+        return String(value);
+    }
+    const trimmed = value.trim();
+    return isPlaceholderValue(trimmed) ? "" : trimmed;
+}
+
+function joinPathParts(parts) {
+    return parts.map((part) => getDisplayValue(part)).filter(Boolean).join(" / ");
 }
 
 async function request(path, options = {}) {
@@ -460,8 +500,8 @@ async function request(path, options = {}) {
 }
 
 function populateSelectOptions(items) {
-    const uniqueBrands = [...new Set(items.map((item) => item.brand))].sort();
-    const uniqueTypes = [...new Set(items.map((item) => item.type))].sort();
+    const uniqueBrands = [...new Set(items.map((item) => getDisplayValue(item.brand)).filter(Boolean))].sort();
+    const uniqueTypes = [...new Set(items.map((item) => getDisplayValue(item.type)).filter(Boolean))].sort();
 
     const selectedCategory = categoryFilter.value;
     const selectedBrand = brandFilter.value;
@@ -519,10 +559,12 @@ function renderCategories(items) {
 
 function buildTree(items) {
     return items.reduce((tree, item) => {
+        const brand = getDisplayValue(item.brand);
+        const itemType = getDisplayValue(item.type);
         tree[item.category] ??= {};
-        tree[item.category][item.brand] ??= {};
-        tree[item.category][item.brand][item.type] ??= [];
-        tree[item.category][item.brand][item.type].push(item);
+        tree[item.category][brand] ??= {};
+        tree[item.category][brand][itemType] ??= [];
+        tree[item.category][brand][itemType].push(item);
         return tree;
     }, {});
 }
@@ -541,8 +583,19 @@ function renderTree(items) {
             const typeMarkup = Object.keys(types).sort().map((itemType) => {
                 const sizes = types[itemType]
                     .sort((a, b) => a.size.localeCompare(b.size))
-                    .map((item) => `<div class="tree-leaf">${item.size} - ${item.quantity} ${item.unit}</div>`)
+                    .map((item) => {
+                        const details = [item.size];
+                        const batchRollNo = getDisplayValue(item.batch_roll_no);
+                        if (batchRollNo) {
+                            details.push(`Batch/Roll No: ${batchRollNo}`);
+                        }
+                        return `<div class="tree-leaf">${details.join(" • ")} - ${item.quantity} ${item.unit}</div>`;
+                    })
                     .join("");
+
+                if (!itemType) {
+                    return sizes;
+                }
 
                 return `
                     <details>
@@ -551,6 +604,10 @@ function renderTree(items) {
                     </details>
                 `;
             }).join("");
+
+            if (!brand) {
+                return typeMarkup;
+            }
 
             return `
                 <details>
@@ -584,7 +641,7 @@ function renderTable(items) {
     statusText.textContent = `${items.length} item(s) found`;
 
     if (items.length === 0) {
-        inventoryTableBody.innerHTML = '<tr><td colspan="10" class="empty-state">No inventory available</td></tr>';
+        inventoryTableBody.innerHTML = '<tr><td colspan="11" class="empty-state">No inventory available</td></tr>';
         return;
     }
 
@@ -595,8 +652,9 @@ function renderTable(items) {
         row.dataset.itemKey = getItemKey(item);
 
         row.querySelector('[data-field="category"]').textContent = item.category;
-        row.querySelector('[data-field="brand"]').textContent = item.brand;
-        row.querySelector('[data-field="type"]').textContent = item.type;
+        row.querySelector('[data-field="brand"]').textContent = getDisplayValue(item.brand);
+        row.querySelector('[data-field="type"]').textContent = getDisplayValue(item.type);
+        row.querySelector('[data-field="batch_roll_no"]').textContent = getDisplayValue(item.batch_roll_no) || "-";
         row.querySelector('[data-field="width"]').textContent = item.width || "-";
         row.querySelector('[data-field="height"]').textContent = item.height || "-";
         row.querySelector('[data-field="thickness"]').textContent = item.thickness || "-";
@@ -622,7 +680,7 @@ function renderLogs(logs) {
     const markup = logs.map((log) => `
         <div class="log-entry">
             <p><strong>${log.action}</strong> via ${log.source}</p>
-            <p>${log.category} / ${log.brand} / ${log.type} / ${log.size}</p>
+            <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
             <p>${log.quantity_before} -> ${log.quantity_after} ${log.unit}</p>
             <p>${new Date(log.changed_at).toLocaleString()}</p>
         </div>
@@ -632,7 +690,7 @@ function renderLogs(logs) {
     overviewLogs.innerHTML = logs.slice(0, 4).map((log) => `
         <div class="log-entry">
             <p><strong>${log.action}</strong> via ${log.source}</p>
-            <p>${log.category} / ${log.brand} / ${log.type} / ${log.size}</p>
+            <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
             <p>${log.quantity_before} -> ${log.quantity_after} ${log.unit}</p>
             <p>${new Date(log.changed_at).toLocaleString()}</p>
         </div>
@@ -742,6 +800,10 @@ function validateForm(formData) {
         return `thickness is required in ${categoryRule.thicknessUnit}`;
     }
 
+    if (requiresBatchRollNo(categoryValue, unitValue) && !formBatchRollNoInput.value.trim()) {
+        return "batch / roll no. is required for blanket rolls";
+    }
+
     return "";
 }
 
@@ -761,6 +823,9 @@ async function handleAddItem(event) {
         category: formCategorySelect.value.trim(),
         brand: categoryRule.requiresBrand ? formData.get("brand").trim() : "",
         type: categoryRule.requiresType ? formData.get("type").trim() : "",
+        batch_roll_no: requiresBatchRollNo(formCategorySelect.value.trim(), formUnitSelect.value.trim())
+            ? formData.get("batch_roll_no").trim()
+            : "",
         width: formWidthInput.value.trim(),
         height: formHeightInput.value.trim(),
         thickness: formThicknessInput.value.trim(),
@@ -848,7 +913,7 @@ async function handleTableClick(event) {
     }
 
     if (button.classList.contains("delete-button")) {
-        const confirmed = window.confirm(`Delete ${item.category} / ${item.brand} / ${item.type} / ${item.size}?`);
+        const confirmed = window.confirm(`Delete ${joinPathParts([item.category, item.brand, item.type, item.batch_roll_no, item.size])}?`);
         if (!confirmed) {
             return;
         }
@@ -912,6 +977,7 @@ window.addEventListener("hashchange", () => {
 itemForm.addEventListener("submit", handleAddItem);
 excelForm.addEventListener("submit", handleExcelUpload);
 formCategorySelect.addEventListener("change", updateCategoryDrivenFields);
+formUnitSelect.addEventListener("change", updateCategoryDrivenFields);
 refreshButton.addEventListener("click", async () => {
     await Promise.all([loadInventory(), loadLogs()]);
 });

@@ -19,10 +19,21 @@ app = Flask(__name__)
 CORS(app)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
+REQUIRED_EXCEL_COLUMNS = [
+    "Category",
+    "Brand",
+    "Type",
+    "Width",
+    "Height",
+    "Thickness",
+    "Quantity",
+    "Unit",
+]
 EXCEL_COLUMNS = [
     "Category",
     "Brand",
     "Type",
+    "Batch/Roll No",
     "Width",
     "Height",
     "Thickness",
@@ -72,6 +83,11 @@ CHEMICAL_CATEGORIES = {
     "Plate Care Products",
     "Roller Care Products",
     "Blanket Maintenance Products",
+}
+
+BLANKET_BATCH_ROLL_CATEGORIES = {
+    "Rubber Blankets",
+    "Metalback Blankets",
 }
 
 
@@ -199,10 +215,16 @@ def build_size_label(width, height):
     return width or height or None
 
 
+def requires_batch_roll_no(category, unit):
+    cleaned_unit = clean_text(unit)
+    return category in BLANKET_BATCH_ROLL_CATEGORIES and cleaned_unit and cleaned_unit.lower() == "rolls"
+
+
 def build_item_payload(data):
     category = clean_text(data.get("category"))
     brand = clean_text(data.get("brand"))
     item_type = clean_text(data.get("type"))
+    batch_roll_no = parse_optional_text(data.get("batch_roll_no"))
     width = normalize_dimension(data.get("width"))
     height = normalize_dimension(data.get("height"))
     thickness = parse_optional_text(data.get("thickness"))
@@ -223,6 +245,10 @@ def build_item_payload(data):
         return None, "type is required"
     if not unit:
         return None, "unit is required"
+    if requires_batch_roll_no(category, unit) and not batch_roll_no:
+        return None, "batch / roll no. is required for blanket rolls"
+    if not requires_batch_roll_no(category, unit):
+        batch_roll_no = None
 
     if category == "Creasing Matrix" and unit.lower() != "pkt":
         return None, "unit must be pkt for this category"
@@ -264,6 +290,7 @@ def build_item_payload(data):
         "category": category,
         "brand": brand,
         "type": item_type,
+        "batch_roll_no": batch_roll_no,
         "width": width,
         "height": height,
         "size": build_size_label(width, height),
@@ -283,9 +310,11 @@ def build_lookup(data):
     category = clean_text(data.get("category"))
     brand = clean_text(data.get("brand"))
     item_type = clean_text(data.get("type"))
+    batch_roll_no = parse_optional_text(data.get("batch_roll_no"))
     width = normalize_dimension(data.get("width"))
     height = normalize_dimension(data.get("height"))
     thickness = parse_optional_text(data.get("thickness"))
+    unit = clean_text(data.get("unit"))
 
     if not category:
         return None, "category is required"
@@ -298,6 +327,8 @@ def build_lookup(data):
         return None, "brand is required"
     if category_requires_type(category) and not item_type:
         return None, "type is required"
+    if not requires_batch_roll_no(category, unit):
+        batch_roll_no = None
 
     if category_uses_dimensions(category) and not all([width, height]):
         return None, "width and height are required for this category"
@@ -309,6 +340,7 @@ def build_lookup(data):
         "category": category,
         "brand": brand,
         "type": item_type,
+        "batch_roll_no": batch_roll_no,
         "width": width,
         "height": height,
         "thickness": thickness,
@@ -321,6 +353,7 @@ def build_item_key(lookup):
             lookup["category"],
             lookup["brand"],
             lookup["type"],
+            lookup.get("batch_roll_no") or "-",
             lookup.get("width") or "-",
             lookup.get("height") or "-",
             lookup.get("thickness") or "-",
@@ -334,6 +367,7 @@ def serialize_item(item):
         "category": item["category"],
         "brand": item["brand"],
         "type": item["type"],
+        "batch_roll_no": item.get("batch_roll_no"),
         "width": item.get("width"),
         "height": item.get("height"),
         "size": item.get("size"),
@@ -353,6 +387,7 @@ def serialize_log(log):
         "category": log["category"],
         "brand": log["brand"],
         "type": log["type"],
+        "batch_roll_no": log.get("batch_roll_no"),
         "size": log["size"],
         "width": log.get("width"),
         "height": log.get("height"),
@@ -375,6 +410,7 @@ def log_stock_change(item, action, quantity_before, quantity_after, source):
             "category": item["category"],
             "brand": item["brand"],
             "type": item["type"],
+            "batch_roll_no": item.get("batch_roll_no"),
             "size": item["size"],
             "width": item.get("width"),
             "height": item.get("height"),
@@ -414,6 +450,7 @@ def create_inventory_query(args):
             {"category": regex},
             {"brand": regex},
             {"type": regex},
+            {"batch_roll_no": regex},
         ]
 
     if low_stock:
@@ -434,6 +471,7 @@ def process_excel_row(row):
             "category": row.get("Category"),
             "brand": row.get("Brand"),
             "type": row.get("Type"),
+            "batch_roll_no": row.get("Batch/Roll No"),
             "width": row.get("Width"),
             "height": row.get("Height"),
             "thickness": row.get("Thickness"),
@@ -509,6 +547,7 @@ def get_inventory():
             ("category", 1),
             ("brand", 1),
             ("type", 1),
+            ("batch_roll_no", 1),
             ("width", 1),
             ("height", 1),
             ("thickness", 1),
@@ -619,7 +658,7 @@ def upload_excel():
     except Exception:
         return jsonify({"error": "Unable to read Excel file"}), 400
 
-    missing_columns = [column for column in EXCEL_COLUMNS if column not in dataframe.columns]
+    missing_columns = [column for column in REQUIRED_EXCEL_COLUMNS if column not in dataframe.columns]
     if missing_columns:
         return jsonify(
             {
@@ -629,7 +668,8 @@ def upload_excel():
             }
         ), 400
 
-    records = dataframe[EXCEL_COLUMNS].to_dict(orient="records")
+    selected_columns = [column for column in EXCEL_COLUMNS if column in dataframe.columns]
+    records = dataframe[selected_columns].to_dict(orient="records")
     if not records:
         return jsonify({"error": "Excel file is empty"}), 400
 
@@ -652,6 +692,7 @@ def upload_excel():
                 "category": item["category"],
                 "brand": item["brand"],
                 "type": item["type"],
+                "batch_roll_no": item.get("batch_roll_no"),
                 "width": item.get("width"),
                 "height": item.get("height"),
                 "thickness": item.get("thickness"),
@@ -665,6 +706,7 @@ def upload_excel():
                     "$set": {
                         "quantity": item["quantity"],
                         "unit": item["unit"],
+                        "batch_roll_no": item.get("batch_roll_no"),
                         "size": item["size"],
                         "width": item.get("width"),
                         "height": item.get("height"),
@@ -701,6 +743,7 @@ def export_excel():
                 ("category", 1),
                 ("brand", 1),
                 ("type", 1),
+                ("batch_roll_no", 1),
                 ("width", 1),
                 ("height", 1),
                 ("thickness", 1),
@@ -713,6 +756,7 @@ def export_excel():
             "Category": item["category"],
             "Brand": item["brand"],
             "Type": item["type"],
+            "Batch/Roll No": item.get("batch_roll_no"),
             "Width": item.get("width"),
             "Height": item.get("height"),
             "Thickness": item.get("thickness"),
