@@ -439,30 +439,130 @@ select:disabled {
 
 .table-wrap {
     overflow-x: auto;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: #fff;
+    box-shadow: var(--shadow);
 }
 
 table {
     width: 100%;
-    min-width: 980px;
+    min-width: 1100px;
     border-collapse: collapse;
 }
 
-th,
-td {
-    padding: 0.85rem 0.75rem;
+th {
+    position: sticky;
+    top: 0;
+    background: var(--panel-strong);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+    padding: 1rem 0.9rem;
     text-align: left;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
+    z-index: 10;
 }
 
-th {
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.8rem;
-    color: var(--muted);
+th[data-align="right"] {
+    text-align: right;
+}
+
+th[data-align="center"] {
+    text-align: center;
+}
+
+tbody tr {
+    transition: background 0.15s ease;
+}
+
+tbody tr:hover {
+    background: rgba(13, 108, 116, 0.04);
+}
+
+tbody tr:nth-child(even) {
+    background: rgba(248, 245, 240, 0.5);
+}
+
+tbody tr:nth-child(even):hover {
+    background: rgba(13, 108, 116, 0.06);
+}
+
+td {
+    padding: 0.95rem 0.9rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(216, 199, 175, 0.4);
+    font-size: 0.92rem;
+    color: var(--text);
+}
+
+td[data-align="right"] {
+    text-align: right;
+    font-family: "Segoe UI", monospace;
+    font-weight: 600;
+}
+
+td[data-align="center"] {
+    text-align: center;
+}
+
+td[data-field="quantity"] {
+    font-weight: 700;
+    color: var(--accent);
+}
+
+td[data-field="category"] {
+    font-weight: 600;
+    color: var(--text);
+}
+
+td[data-field="brand"],
+td[data-field="type"] {
+    color: #4a5568;
+}
+
+.update-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.movement-select {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    min-width: 100px;
 }
 
 .delta-input {
-    max-width: 90px;
+    max-width: 80px;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    text-align: center;
+    font-weight: 600;
+}
+
+.update-button {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 10px;
+}
+
+.delete-button {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 10px;
 }
 
 .logs-list {
