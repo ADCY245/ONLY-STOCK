@@ -1,9 +1,9 @@
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone as datetime_timezone
 from io import BytesIO
 from pathlib import Path
-from pytz import timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -42,6 +42,7 @@ EXCEL_COLUMNS = [
     "Unit",
 ]
 DEFAULT_LOW_STOCK_THRESHOLD = 5
+IST_TIMEZONE = ZoneInfo("Asia/Kolkata")
 THICKNESS_REQUIRED_CATEGORIES = {
     "Rubber Blankets",
     "Metalback Blankets",
@@ -90,6 +91,18 @@ BLANKET_BATCH_ROLL_CATEGORIES = {
     "Rubber Blankets",
     "Metalback Blankets",
 }
+
+
+def now_ist():
+    return datetime.now(IST_TIMEZONE)
+
+
+def serialize_datetime_ist(value):
+    if not value:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=datetime_timezone.utc)
+    return value.astimezone(IST_TIMEZONE).isoformat()
 
 
 def clean_text(value):
@@ -144,6 +157,22 @@ def parse_number(value, field_name, allow_negative=False):
         return None, f"{field_name} must be a non-negative number"
 
     return parsed, None
+
+
+def parse_dimension_number(value):
+    text = str(value or "").strip()
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    return float(match.group(0))
+
+
+def calculate_roll_area_sqm(width, length):
+    width_mm = parse_dimension_number(width)
+    length_mtr = parse_dimension_number(length)
+    if width_mm is None or length_mtr is None:
+        return None
+    return round((width_mm / 1000) * length_mtr, 4)
 
 
 def parse_optional_text(value):
@@ -221,6 +250,11 @@ def requires_batch_roll_no(category, unit):
     return category in BLANKET_BATCH_ROLL_CATEGORIES and cleaned_unit and cleaned_unit.lower() == "rolls"
 
 
+def is_roll_unit(unit):
+    cleaned_unit = clean_text(unit)
+    return cleaned_unit is not None and cleaned_unit.lower() == "rolls"
+
+
 def build_item_payload(data):
     category = clean_text(data.get("category"))
     brand = clean_text(data.get("brand"))
@@ -272,7 +306,10 @@ def build_item_payload(data):
         if unit.lower() != format_unit:
             return None, "unit must match the type format unit (e.g., ltr or kg)"
 
-    if category in CHEMICAL_CATEGORIES:
+    if is_roll_unit(unit):
+        quantity = 0
+        quantity_error = None
+    elif category in CHEMICAL_CATEGORIES:
         quantity, quantity_error = parse_number(data.get("quantity"), "quantity")
     else:
         quantity, quantity_error = parse_integer(data.get("quantity"), "quantity")
@@ -285,8 +322,13 @@ def build_item_payload(data):
 
     if quantity_error:
         return None, quantity_error
+    if is_roll_unit(unit):
+        roll_area = calculate_roll_area_sqm(width, height)
+        if roll_area is None:
+            return None, "width and height/length must be numeric for roll sq.m calculation"
+        quantity = roll_area
 
-    now = datetime.now(timezone('Asia/Kolkata'))
+    now = now_ist()
     payload = {
         "category": category,
         "brand": brand,
@@ -375,8 +417,8 @@ def serialize_item(item):
         "thickness": item.get("thickness"),
         "quantity": item["quantity"],
         "unit": item["unit"],
-        "created_at": item["created_at"].isoformat() if item.get("created_at") else None,
-        "updated_at": item["updated_at"].isoformat() if item.get("updated_at") else None,
+        "created_at": serialize_datetime_ist(item.get("created_at")),
+        "updated_at": serialize_datetime_ist(item.get("updated_at")),
     }
 
 
@@ -398,11 +440,13 @@ def serialize_log(log):
         "quantity_change": log["quantity_change"],
         "unit": log["unit"],
         "source": log["source"],
-        "changed_at": log["changed_at"].isoformat(),
+        "reason": log.get("reason"),
+        "details": log.get("details") or {},
+        "changed_at": serialize_datetime_ist(log.get("changed_at")),
     }
 
 
-def log_stock_change(item, action, quantity_before, quantity_after, source):
+def log_stock_change(item, action, quantity_before, quantity_after, source, reason=None, details=None):
     stock_logs_collection = get_stock_logs_collection()
     stock_logs_collection.insert_one(
         {
@@ -421,7 +465,9 @@ def log_stock_change(item, action, quantity_before, quantity_after, source):
             "quantity_change": quantity_after - quantity_before,
             "unit": item["unit"],
             "source": source,
-            "changed_at": datetime.now(timezone('Asia/Kolkata')),
+            "reason": parse_optional_text(reason),
+            "details": details or {},
+            "changed_at": now_ist(),
         }
     )
 
@@ -483,6 +529,89 @@ def process_excel_row(row):
     return item, error
 
 
+def get_request_reason(data, default_reason=None):
+    reason = parse_optional_text(data.get("reason"))
+    return reason or default_reason
+
+
+def get_excel_reason():
+    return parse_optional_text(request.form.get("reason")) or "Excel upload"
+
+
+def get_item_identity_query(item):
+    return {
+        "category": item["category"],
+        "brand": item["brand"],
+        "type": item["type"],
+        "batch_roll_no": item.get("batch_roll_no"),
+        "width": item.get("width"),
+        "height": item.get("height"),
+        "thickness": item.get("thickness"),
+    }
+
+
+def get_inventory_sort():
+    return [
+        ("category", 1),
+        ("brand", 1),
+        ("type", 1),
+        ("batch_roll_no", 1),
+        ("width", 1),
+        ("height", 1),
+        ("thickness", 1),
+    ]
+
+
+def build_export_rows(items):
+    return [
+        {
+            "Category": item["category"],
+            "Brand": item["brand"],
+            "Type": item["type"],
+            "Batch/Roll No": item.get("batch_roll_no"),
+            "Width": item.get("width"),
+            "Height": item.get("height"),
+            "Thickness": item.get("thickness"),
+            "Quantity": item["quantity"],
+            "Unit": item["unit"],
+        }
+        for item in items
+    ]
+
+
+def send_excel(dataframe, download_name, sheet_name):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
+
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=download_name,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def get_changed_fields(existing_item, item):
+    comparable_fields = [
+        "quantity",
+        "unit",
+        "batch_roll_no",
+        "size",
+        "width",
+        "height",
+        "thickness",
+    ]
+    changes = {}
+    for field in comparable_fields:
+        before = existing_item.get(field)
+        after = item.get(field)
+        if before != after:
+            changes[field] = {"before": before, "after": after}
+    return changes
+
+
 @app.route("/")
 def home():
     return send_from_directory(FRONTEND_DIR, "index.html")
@@ -522,6 +651,7 @@ def add_item():
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     item, error = build_item_payload(data)
+    reason = get_request_reason(data, "Manual item creation")
 
     if error:
         return jsonify({"error": error}), 400
@@ -532,7 +662,7 @@ def add_item():
         return jsonify({"error": "Item already exists"}), 409
 
     item["_id"] = result.inserted_id
-    log_stock_change(item, "created", 0, item["quantity"], "manual")
+    log_stock_change(item, "created", 0, item["quantity"], "manual", reason)
     return jsonify({"message": "Item added", "item": serialize_item(item)}), 201
 
 
@@ -543,17 +673,7 @@ def get_inventory():
     if error:
         return jsonify({"error": error}), 400
 
-    items = inventory_collection.find(query).sort(
-        [
-            ("category", 1),
-            ("brand", 1),
-            ("type", 1),
-            ("batch_roll_no", 1),
-            ("width", 1),
-            ("height", 1),
-            ("thickness", 1),
-        ]
-    )
+    items = inventory_collection.find(query).sort(get_inventory_sort())
     return jsonify([serialize_item(item) for item in items])
 
 
@@ -573,6 +693,7 @@ def update_stock():
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
+    reason = get_request_reason(data, "Manual stock movement")
     if error:
         return jsonify({"error": error}), 400
 
@@ -580,7 +701,7 @@ def update_stock():
     if not item:
         return jsonify({"error": "Item not found"}), 404
 
-    if item.get("category") in CHEMICAL_CATEGORIES:
+    if item.get("category") in CHEMICAL_CATEGORIES or is_roll_unit(item.get("unit")):
         quantity_change, quantity_error = parse_number(
             data.get("quantity_change"),
             "quantity_change",
@@ -601,7 +722,7 @@ def update_stock():
 
     updates = {
         "quantity": new_quantity,
-        "updated_at": datetime.now(timezone('Asia/Kolkata')),
+        "updated_at": now_ist(),
     }
 
     if data.get("thickness") is not None:
@@ -625,6 +746,12 @@ def update_stock():
         item["quantity"],
         updated_item["quantity"],
         "manual",
+        reason,
+        {
+            "movement": data.get("quantity_change"),
+            "quantity_before": item["quantity"],
+            "quantity_after": updated_item["quantity"],
+        },
     )
 
     return jsonify({"message": "Stock updated", "item": serialize_item(updated_item)})
@@ -635,6 +762,7 @@ def delete_item():
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
+    reason = get_request_reason(data, "Manual item deletion")
     if error:
         return jsonify({"error": error}), 400
 
@@ -643,7 +771,7 @@ def delete_item():
         return jsonify({"error": "Item not found"}), 404
 
     inventory_collection.delete_one({"_id": item["_id"]})
-    log_stock_change(item, "deleted", item["quantity"], 0, "manual")
+    log_stock_change(item, "deleted", item["quantity"], 0, "manual", reason)
     return jsonify({"message": "Item deleted"})
 
 
@@ -651,6 +779,11 @@ def delete_item():
 def upload_excel():
     inventory_collection = get_inventory_collection()
     uploaded_file = request.files.get("file")
+    upload_mode = (request.form.get("mode") or "import").strip().lower()
+    reason = get_excel_reason()
+    if upload_mode not in {"import", "update"}:
+        return jsonify({"error": "mode must be import or update"}), 400
+
     if uploaded_file is None or uploaded_file.filename == "":
         return jsonify({"error": "Excel file is required"}), 400
 
@@ -677,6 +810,7 @@ def upload_excel():
     seen_keys = set()
     inserted = 0
     updated = 0
+    unchanged = 0
 
     for index, row in enumerate(records, start=2):
         item, error = process_excel_row(row)
@@ -688,19 +822,14 @@ def upload_excel():
             return jsonify({"error": f"Row {index}: duplicate item in Excel file"}), 400
         seen_keys.add(item_key)
 
-        existing_item = inventory_collection.find_one(
-            {
-                "category": item["category"],
-                "brand": item["brand"],
-                "type": item["type"],
-                "batch_roll_no": item.get("batch_roll_no"),
-                "width": item.get("width"),
-                "height": item.get("height"),
-                "thickness": item.get("thickness"),
-            }
-        )
+        existing_item = inventory_collection.find_one(get_item_identity_query(item))
 
         if existing_item:
+            changes = get_changed_fields(existing_item, item)
+            if not changes:
+                unchanged += 1
+                continue
+
             inventory_collection.update_one(
                 {"_id": existing_item["_id"]},
                 {
@@ -712,74 +841,75 @@ def upload_excel():
                         "width": item.get("width"),
                         "height": item.get("height"),
                         "thickness": item.get("thickness"),
-                        "updated_at": datetime.now(timezone('Asia/Kolkata')),
+                        "updated_at": now_ist(),
                     }
                 },
             )
             latest_item = inventory_collection.find_one({"_id": existing_item["_id"]})
-            log_stock_change(latest_item, "excel_update", existing_item["quantity"], latest_item["quantity"], "excel")
+            log_stock_change(
+                latest_item,
+                "excel_update",
+                existing_item["quantity"],
+                latest_item["quantity"],
+                "excel",
+                reason,
+                {"mode": upload_mode, "changes": changes},
+            )
             updated += 1
         else:
             result = inventory_collection.insert_one(item)
             item["_id"] = result.inserted_id
-            log_stock_change(item, "excel_create", 0, item["quantity"], "excel")
+            log_stock_change(item, "excel_create", 0, item["quantity"], "excel", reason, {"mode": upload_mode})
             inserted += 1
+
+    deleted = 0
+    if upload_mode == "update":
+        for existing_item in inventory_collection.find():
+            if build_item_key(existing_item) in seen_keys:
+                continue
+            inventory_collection.delete_one({"_id": existing_item["_id"]})
+            log_stock_change(
+                existing_item,
+                "excel_delete",
+                existing_item["quantity"],
+                0,
+                "excel",
+                reason,
+                {"mode": upload_mode, "delete_source": "missing_from_update_sheet"},
+            )
+            deleted += 1
 
     return jsonify(
         {
             "message": "Excel processed successfully",
             "inserted": inserted,
             "updated": updated,
+            "deleted": deleted,
+            "unchanged": unchanged,
             "total_rows": len(records),
+            "mode": upload_mode,
         }
     )
+
+
+@app.route("/download-import-template", methods=["GET"])
+def download_import_template():
+    dataframe = pd.DataFrame(columns=EXCEL_COLUMNS)
+    return send_excel(dataframe, "import_items_template.xlsx", "Import Items")
+
+
+@app.route("/export-update-excel", methods=["GET"])
+def export_update_excel():
+    inventory_collection = get_inventory_collection()
+    items = list(inventory_collection.find().sort(get_inventory_sort()))
+    export_rows = build_export_rows(items)
+    dataframe = pd.DataFrame(export_rows, columns=EXCEL_COLUMNS)
+    return send_excel(dataframe, "update_items_current_stock.xlsx", "Update Items")
 
 
 @app.route("/export-excel", methods=["GET"])
 def export_excel():
-    inventory_collection = get_inventory_collection()
-    items = list(
-        inventory_collection.find().sort(
-            [
-                ("category", 1),
-                ("brand", 1),
-                ("type", 1),
-                ("batch_roll_no", 1),
-                ("width", 1),
-                ("height", 1),
-                ("thickness", 1),
-            ]
-        )
-    )
-
-    export_rows = [
-        {
-            "Category": item["category"],
-            "Brand": item["brand"],
-            "Type": item["type"],
-            "Batch/Roll No": item.get("batch_roll_no"),
-            "Width": item.get("width"),
-            "Height": item.get("height"),
-            "Thickness": item.get("thickness"),
-            "Quantity": item["quantity"],
-            "Unit": item["unit"],
-        }
-        for item in items
-    ]
-
-    dataframe = pd.DataFrame(export_rows, columns=EXCEL_COLUMNS)
-    output = BytesIO()
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dataframe.to_excel(writer, index=False, sheet_name="Inventory")
-
-    output.seek(0)
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name="inventory_export.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    return export_update_excel()
 
 
 if __name__ == "__main__":

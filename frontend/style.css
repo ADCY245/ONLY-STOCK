@@ -166,6 +166,8 @@ select {
 .header-actions,
 .form-actions,
 .excel-form,
+.excel-upload-form,
+.dialog-actions,
 .update-controls {
     display: flex;
     gap: 0.75rem;
@@ -389,6 +391,21 @@ select:disabled {
     flex: 1;
 }
 
+.excel-upload-form {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.excel-upload-form label {
+    display: flex;
+    flex: 1 1 220px;
+    flex-direction: column;
+    gap: 0.45rem;
+    font-weight: 600;
+}
+
 .excel-card {
     padding: 1.2rem;
 }
@@ -530,7 +547,8 @@ td[data-field="type"] {
     flex-wrap: wrap;
 }
 
-.movement-select {
+.movement-select,
+.movement-unit-select {
     padding: 0.5rem 0.7rem;
     font-size: 0.85rem;
     border-radius: 10px;
@@ -538,6 +556,10 @@ td[data-field="type"] {
     background: #fff;
     color: var(--text);
     min-width: 100px;
+}
+
+.movement-unit-select {
+    min-width: 82px;
 }
 
 .delta-input {
@@ -570,8 +592,61 @@ td[data-field="type"] {
     gap: 0.65rem;
 }
 
+.log-entry summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.log-details {
+    margin-top: 0.65rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--border);
+}
+
 .log-entry p {
     margin: 0.15rem 0;
+}
+
+.reason-dialog {
+    width: min(520px, calc(100vw - 2rem));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    color: var(--text);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.reason-dialog::backdrop {
+    background: rgba(16, 25, 32, 0.52);
+}
+
+.reason-dialog form {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.reason-dialog h3,
+.reason-dialog p {
+    margin: 0;
+}
+
+.reason-dialog textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 110px;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    color: var(--text);
+}
+
+.dialog-actions {
+    justify-content: flex-end;
 }
 
 .empty-state {
@@ -601,6 +676,8 @@ td[data-field="type"] {
     .section-heading,
     .header-actions,
     .excel-form,
+    .excel-upload-form,
+    .dialog-actions,
     .update-controls {
         flex-direction: column;
         align-items: stretch;

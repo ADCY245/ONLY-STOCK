@@ -41,6 +41,8 @@ const excelFileInput = document.getElementById("excelFile");
 const refreshButton = document.getElementById("refreshButton");
 const exportButton = document.getElementById("exportButton");
 const excelExportButton = document.getElementById("excelExportButton");
+const importTemplateButton = document.getElementById("importTemplateButton");
+const excelModeSelect = document.getElementById("excelModeSelect");
 const inventoryTableBody = document.getElementById("inventoryTableBody");
 const categoryList = document.getElementById("categoryList");
 const categoryCount = document.getElementById("categoryCount");
@@ -63,6 +65,13 @@ const pageTitle = document.getElementById("pageTitle");
 const pageDescription = document.getElementById("pageDescription");
 const pages = [...document.querySelectorAll("[data-page]")];
 const pageLinks = [...document.querySelectorAll("[data-page-link]")];
+const reasonDialog = document.getElementById("reasonDialog");
+const reasonForm = document.getElementById("reasonForm");
+const reasonTitle = document.getElementById("reasonTitle");
+const reasonPrompt = document.getElementById("reasonPrompt");
+const reasonInput = document.getElementById("reasonInput");
+const reasonError = document.getElementById("reasonError");
+const reasonCancelButton = document.getElementById("reasonCancelButton");
 
 const searchInput = document.getElementById("searchInput");
 const categoryFilter = document.getElementById("categoryFilter");
@@ -76,7 +85,9 @@ const formUnitSelect = document.getElementById("formUnitSelect");
 const formWidthInput = document.getElementById("formWidthInput");
 const formHeightInput = document.getElementById("formHeightInput");
 const formThicknessInput = document.getElementById("formThicknessInput");
+const formQuantityInput = document.getElementById("formQuantityInput");
 const thicknessHint = document.getElementById("thicknessHint");
+const quantityHint = document.getElementById("quantityHint");
 
 const formBrandInput = itemForm.querySelector('input[name="brand"]');
 const formTypeInput = itemForm.querySelector('input[name="type"]');
@@ -87,6 +98,7 @@ const batchRollNoLabel = formBatchRollNoInput.closest("label");
 const widthLabel = formWidthInput.closest("label");
 const heightLabel = formHeightInput.closest("label");
 const thicknessLabel = formThicknessInput.closest("label");
+const quantityLabel = formQuantityInput.closest("label");
 
 const CATEGORY_OPTIONS = [
     { code: "01", label: "Rubber Blankets" },
@@ -330,6 +342,77 @@ function requiresBatchRollNo(category, unit) {
     return Boolean(rule.supportsBatchRollNo && String(unit || "").trim().toLowerCase() === "rolls");
 }
 
+function isRollItem(itemOrUnit) {
+    const unit = typeof itemOrUnit === "string" ? itemOrUnit : itemOrUnit?.unit;
+    return String(unit || "").trim().toLowerCase() === "rolls";
+}
+
+function parsePositiveNumber(value) {
+    const match = String(value ?? "").trim().match(/\d+(?:\.\d+)?/);
+    const number = match ? Number(match[0]) : Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function getRollWidthMeters(item) {
+    const width = parsePositiveNumber(item?.width);
+    return width === null ? null : width / 1000;
+}
+
+function getRollAreaSqm(widthValue, lengthValue) {
+    const widthMeters = parsePositiveNumber(widthValue);
+    const lengthMeters = parsePositiveNumber(lengthValue);
+    if (widthMeters === null || lengthMeters === null) {
+        return null;
+    }
+    return (widthMeters / 1000) * lengthMeters;
+}
+
+function roundStockQuantity(value) {
+    return Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
+}
+
+function formatQuantity(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return String(value ?? "");
+    }
+    return new Intl.NumberFormat("en-IN", {
+        maximumFractionDigits: 4,
+    }).format(number);
+}
+
+function getDisplayUnit(unit) {
+    return isRollItem(unit) ? "sq.m" : unit;
+}
+
+function formatIstDateTime(value) {
+    if (!value) {
+        return "";
+    }
+    return new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: "Asia/Kolkata",
+    }).format(new Date(value));
+}
+
+function convertMovementToSqm(item, amount, movementUnit) {
+    if (movementUnit === "sqm") {
+        return amount;
+    }
+    const widthMeters = getRollWidthMeters(item);
+    if (widthMeters === null) {
+        throw new Error("roll width is required to convert this movement");
+    }
+    if (movementUnit === "mtr") {
+        return widthMeters * amount;
+    }
+    if (movementUnit === "inch") {
+        return widthMeters * amount * 0.0254;
+    }
+    return amount;
+}
+
 function updateCategoryDrivenFields() {
     const rule = getCategoryRule(formCategorySelect.value);
     const previousUnit = formUnitSelect.value;
@@ -382,12 +465,40 @@ function updateCategoryDrivenFields() {
         formUnitSelect.value = rule.defaultUnit;
     }
 
+    const selectedIsRoll = isRollItem(formUnitSelect.value);
+    if (selectedIsRoll) {
+        formQuantityInput.step = "0.0001";
+        formQuantityInput.placeholder = "Auto-calculated in sq.m";
+        quantityHint.textContent = "Roll quantity is stored as sq.m. Enter width in mm and height/length in mtr.";
+    } else if (rule.quantityAllowsDecimal) {
+        formQuantityInput.step = "0.01";
+        formQuantityInput.placeholder = "10";
+        quantityHint.textContent = "Decimals are allowed for this category.";
+    } else {
+        formQuantityInput.step = "1";
+        formQuantityInput.placeholder = "10";
+        quantityHint.textContent = "Use the item's stock unit.";
+    }
+
     if (rule.unitLinkedToType && rule.typeOptions) {
         const normalizedType = formTypeInput.value.trim().toLowerCase();
         if (rule.typeOptions.includes(normalizedType)) {
             formUnitSelect.value = normalizedType;
         }
     }
+
+    updateRollQuantityEstimate();
+}
+
+function updateRollQuantityEstimate() {
+    if (!isRollItem(formUnitSelect.value)) {
+        return;
+    }
+    const area = getRollAreaSqm(formWidthInput.value, formHeightInput.value);
+    if (area === null) {
+        return;
+    }
+    formQuantityInput.value = String(roundStockQuantity(area));
 }
 
 formTypeInput.addEventListener("input", () => {
@@ -473,6 +584,69 @@ function getDisplayValue(value) {
 
 function joinPathParts(parts) {
     return parts.map((part) => getDisplayValue(part)).filter(Boolean).join(" / ");
+}
+
+function promptForReason(title, promptText) {
+    if (!reasonDialog || typeof reasonDialog.showModal !== "function") {
+        const fallbackReason = window.prompt(promptText);
+        return Promise.resolve(fallbackReason && fallbackReason.trim() ? fallbackReason.trim() : null);
+    }
+
+    reasonTitle.textContent = title;
+    reasonPrompt.textContent = promptText;
+    reasonInput.value = "";
+    reasonError.textContent = "";
+
+    return new Promise((resolve) => {
+        const cleanup = () => {
+            reasonForm.removeEventListener("submit", handleSubmit);
+            reasonCancelButton.removeEventListener("click", handleCancel);
+            reasonDialog.removeEventListener("cancel", handleCancel);
+        };
+
+        const closeDialog = (value) => {
+            cleanup();
+            reasonDialog.close();
+            resolve(value);
+        };
+
+        const handleSubmit = (event) => {
+            event.preventDefault();
+            const reason = reasonInput.value.trim();
+            if (!reason) {
+                reasonError.textContent = "Reason is required";
+                reasonError.dataset.tone = "error";
+                reasonInput.focus();
+                return;
+            }
+            closeDialog(reason);
+        };
+
+        const handleCancel = (event) => {
+            event.preventDefault();
+            closeDialog(null);
+        };
+
+        reasonForm.addEventListener("submit", handleSubmit);
+        reasonCancelButton.addEventListener("click", handleCancel);
+        reasonDialog.addEventListener("cancel", handleCancel);
+        reasonDialog.showModal();
+        reasonInput.focus();
+    });
+}
+
+function getLogDetailsMarkup(details) {
+    if (!details || Object.keys(details).length === 0) {
+        return "<p>No extra details recorded.</p>";
+    }
+
+    return Object.entries(details).map(([key, value]) => {
+        const label = key.replace(/_/g, " ");
+        const text = typeof value === "object" && value !== null
+            ? JSON.stringify(value)
+            : String(value ?? "");
+        return `<p><strong>${label}:</strong> ${text}</p>`;
+    }).join("");
 }
 
 async function request(path, options = {}) {
@@ -628,6 +802,65 @@ function renderTree(items) {
     treeView.innerHTML = categoryMarkup;
 }
 
+function renderInventoryTree(items) {
+    if (items.length === 0) {
+        treeView.innerHTML = '<p class="empty-state">No inventory hierarchy available</p>';
+        return;
+    }
+
+    const tree = buildTree(items);
+    const categoryMarkup = Object.keys(tree).sort().map((category) => {
+        const brands = tree[category];
+        const brandMarkup = Object.keys(brands).sort().map((brand) => {
+            const types = brands[brand];
+            const typeMarkup = Object.keys(types).sort().map((itemType) => {
+                const sizes = types[itemType]
+                    .sort((a, b) => a.size.localeCompare(b.size))
+                    .map((item) => {
+                        const details = [item.size];
+                        const batchRollNo = getDisplayValue(item.batch_roll_no);
+                        if (batchRollNo) {
+                            details.push(`Batch/Roll No: ${batchRollNo}`);
+                        }
+                        return `<div class="tree-leaf">${details.join(" / ")} - ${formatQuantity(item.quantity)} ${getDisplayUnit(item.unit)}</div>`;
+                    })
+                    .join("");
+
+                if (!itemType) {
+                    return sizes;
+                }
+
+                return `
+                    <details>
+                        <summary>${itemType}</summary>
+                        <div class="tree-children">${sizes}</div>
+                    </details>
+                `;
+            }).join("");
+
+            if (!brand) {
+                return typeMarkup;
+            }
+
+            return `
+                <details>
+                    <summary>${brand}</summary>
+                    <div class="tree-children">${typeMarkup}</div>
+                </details>
+            `;
+        }).join("");
+
+        return `
+            <details open>
+                <summary>${category}</summary>
+                <div class="tree-children">${brandMarkup}</div>
+            </details>
+        `;
+    }).join("");
+
+    treeView.innerHTML = categoryMarkup;
+}
+
 function renderOverviewStats(items) {
     const lowStockThresholdValue = Number(lowStockThreshold.value || "5");
     const lowStockCount = items.filter((item) => item.quantity <= lowStockThresholdValue).length;
@@ -658,8 +891,24 @@ function renderTable(items) {
         row.querySelector('[data-field="width"]').textContent = item.width || "-";
         row.querySelector('[data-field="height"]').textContent = item.height || "-";
         row.querySelector('[data-field="thickness"]').textContent = item.thickness || "-";
-        row.querySelector('[data-field="quantity"]').textContent = item.quantity;
-        row.querySelector('[data-field="unit"]').textContent = item.unit;
+        row.querySelector('[data-field="quantity"]').textContent = formatQuantity(item.quantity);
+        row.querySelector('[data-field="unit"]').textContent = getDisplayUnit(item.unit);
+
+        const deltaInput = row.querySelector(".delta-input");
+        const movementUnitSelect = row.querySelector(".movement-unit-select");
+        if (isRollItem(item)) {
+            deltaInput.min = "0.0001";
+            deltaInput.step = "0.0001";
+            movementUnitSelect.innerHTML = `
+                <option value="sqm">sq.m</option>
+                <option value="mtr">mtr</option>
+                <option value="inch">inch</option>
+            `;
+        } else {
+            deltaInput.min = "1";
+            deltaInput.step = getCategoryRule(item.category).quantityAllowsDecimal ? "0.01" : "1";
+            movementUnitSelect.innerHTML = `<option value="item">${item.unit}</option>`;
+        }
 
         inventoryTableBody.appendChild(row);
     });
@@ -678,22 +927,30 @@ function renderLogs(logs) {
     overviewLogBadge.textContent = String(logs.length);
 
     const markup = logs.map((log) => `
-        <div class="log-entry">
-            <p><strong>${log.action}</strong> via ${log.source}</p>
+        <details class="log-entry">
+            <summary>
+                <span><strong>${log.action}</strong> via ${log.source}</span>
+                <span>${formatIstDateTime(log.changed_at)} IST</span>
+            </summary>
             <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
-            <p>${log.quantity_before} -> ${log.quantity_after} ${log.unit}</p>
-            <p>${new Date(log.changed_at).toLocaleString()}</p>
-        </div>
+            <p>${formatQuantity(log.quantity_before)} -> ${formatQuantity(log.quantity_after)} ${getDisplayUnit(log.unit)}</p>
+            <p><strong>Reason:</strong> ${log.reason || "Not recorded"}</p>
+            <div class="log-details">${getLogDetailsMarkup(log.details)}</div>
+        </details>
     `).join("");
 
     logsList.innerHTML = markup;
     overviewLogs.innerHTML = logs.slice(0, 4).map((log) => `
-        <div class="log-entry">
-            <p><strong>${log.action}</strong> via ${log.source}</p>
+        <details class="log-entry">
+            <summary>
+                <span><strong>${log.action}</strong> via ${log.source}</span>
+                <span>${formatIstDateTime(log.changed_at)} IST</span>
+            </summary>
             <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
-            <p>${log.quantity_before} -> ${log.quantity_after} ${log.unit}</p>
-            <p>${new Date(log.changed_at).toLocaleString()}</p>
-        </div>
+            <p>${formatQuantity(log.quantity_before)} -> ${formatQuantity(log.quantity_after)} ${getDisplayUnit(log.unit)}</p>
+            <p><strong>Reason:</strong> ${log.reason || "Not recorded"}</p>
+            <div class="log-details">${getLogDetailsMarkup(log.details)}</div>
+        </details>
     `).join("");
 }
 
@@ -707,7 +964,7 @@ async function loadInventory() {
         state.inventory = Array.isArray(items) ? items : [];
 
         renderCategories(state.inventory);
-        renderTree(state.inventory);
+        renderInventoryTree(state.inventory);
         renderOverviewStats(state.inventory);
         renderTable(state.inventory);
         populateSelectOptions(state.inventory);
@@ -715,7 +972,7 @@ async function loadInventory() {
     } catch (error) {
         state.inventory = [];
         renderCategories([]);
-        renderTree([]);
+        renderInventoryTree([]);
         renderOverviewStats([]);
         renderTable([]);
         setMessage(statusText, error.message, "error");
@@ -745,7 +1002,7 @@ function validateForm(formData) {
         return "unit is required";
     }
 
-    const requiredFields = ["quantity"];
+    const requiredFields = isRollItem(unitValue) ? [] : ["quantity"];
     if (categoryRule.requiresBrand) {
         requiredFields.push("brand");
     }
@@ -762,12 +1019,14 @@ function validateForm(formData) {
         }
     }
 
-    const quantity = Number(formData.get("quantity"));
-    if (!Number.isFinite(quantity) || quantity < 0) {
-        return "quantity must be a non-negative number";
-    }
-    if (!categoryRule.quantityAllowsDecimal && !Number.isInteger(quantity)) {
-        return "quantity must be a non-negative integer";
+    if (!isRollItem(unitValue)) {
+        const quantity = Number(formData.get("quantity"));
+        if (!Number.isFinite(quantity) || quantity < 0) {
+            return "quantity must be a non-negative number";
+        }
+        if (!categoryRule.quantityAllowsDecimal && !Number.isInteger(quantity)) {
+            return "quantity must be a non-negative integer";
+        }
     }
 
     if (categoryRule.unitLinkedToType) {
@@ -810,6 +1069,7 @@ function validateForm(formData) {
 async function handleAddItem(event) {
     event.preventDefault();
 
+    updateRollQuantityEstimate();
     const formData = new FormData(itemForm);
     const validationError = validateForm(formData);
     if (validationError) {
@@ -818,6 +1078,11 @@ async function handleAddItem(event) {
     }
 
     const categoryRule = getCategoryRule(formCategorySelect.value.trim());
+    const reason = await promptForReason("Add Item Reason", "Why are you adding this item?");
+    if (!reason) {
+        setMessage(formMessage, "Item add cancelled", "error");
+        return;
+    }
 
     const payload = {
         category: formCategorySelect.value.trim(),
@@ -831,6 +1096,7 @@ async function handleAddItem(event) {
         thickness: formThicknessInput.value.trim(),
         quantity: Number(formData.get("quantity")),
         unit: formUnitSelect.value.trim(),
+        reason,
     };
 
     try {
@@ -860,8 +1126,22 @@ async function handleExcelUpload(event) {
         return;
     }
 
+    const mode = excelModeSelect.value;
+    const reason = await promptForReason(
+        "Excel Upload Reason",
+        mode === "update"
+            ? "Why are you applying this update sheet? Rows missing from this file will be deleted."
+            : "Why are you importing these items?"
+    );
+    if (!reason) {
+        setMessage(excelMessage, "Excel upload cancelled", "error");
+        return;
+    }
+
     const body = new FormData();
     body.append("file", file);
+    body.append("mode", mode);
+    body.append("reason", reason);
 
     try {
         const response = await request("/upload-excel", {
@@ -872,7 +1152,7 @@ async function handleExcelUpload(event) {
         excelForm.reset();
         setMessage(
             excelMessage,
-            `Excel uploaded: ${response.inserted} inserted, ${response.updated} updated`,
+            `Excel ${response.mode}: ${response.inserted} inserted, ${response.updated} updated, ${response.deleted || 0} deleted, ${response.unchanged || 0} unchanged`,
             "success"
         );
         await Promise.all([loadInventory(), loadLogs()]);
@@ -881,9 +1161,9 @@ async function handleExcelUpload(event) {
     }
 }
 
-async function handleExportExcel() {
+async function downloadExcel(path, filename, successMessage) {
     try {
-        const blob = await request("/export-excel", {
+        const blob = await request(path, {
             method: "GET",
             expectBlob: true,
         });
@@ -891,13 +1171,21 @@ async function handleExportExcel() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "inventory_export.xlsx";
+        link.download = filename;
         link.click();
         URL.revokeObjectURL(url);
-        setMessage(excelMessage, "Excel export downloaded", "success");
+        setMessage(excelMessage, successMessage, "success");
     } catch (error) {
         setMessage(excelMessage, error.message, "error");
     }
+}
+
+async function handleImportTemplateDownload() {
+    await downloadExcel("/download-import-template", "import_items_template.xlsx", "Import sheet downloaded");
+}
+
+async function handleUpdateSheetDownload() {
+    await downloadExcel("/export-update-excel", "update_items_current_stock.xlsx", "Update sheet downloaded");
 }
 
 async function handleTableClick(event) {
@@ -917,11 +1205,18 @@ async function handleTableClick(event) {
         if (!confirmed) {
             return;
         }
+        const reason = await promptForReason("Delete Item Reason", "Why are you deleting this item?");
+        if (!reason) {
+            return;
+        }
 
         try {
             await request("/delete-item", {
                 method: "DELETE",
-                body: JSON.stringify(getLookupPayload(item)),
+                body: JSON.stringify({
+                    ...getLookupPayload(item),
+                    reason,
+                }),
             });
             await Promise.all([loadInventory(), loadLogs()]);
         } catch (error) {
@@ -932,16 +1227,41 @@ async function handleTableClick(event) {
     if (button.classList.contains("update-button")) {
         const input = row.querySelector(".delta-input");
         const movementSelect = row.querySelector(".movement-select");
+        const movementUnitSelect = row.querySelector(".movement-unit-select");
         const movementAmount = Number(input.value);
 
-        if (!Number.isInteger(movementAmount) || movementAmount <= 0) {
-            window.alert("stock movement must be a whole number greater than 0");
+        if (!Number.isFinite(movementAmount) || movementAmount <= 0) {
+            window.alert("stock movement must be greater than 0");
             return;
         }
 
-        const quantityChange = movementSelect.value === "out"
-            ? -movementAmount
-            : movementAmount;
+        if (!isRollItem(item) && !getCategoryRule(item.category).quantityAllowsDecimal && !Number.isInteger(movementAmount)) {
+            window.alert("stock movement must be a whole number for this item");
+            return;
+        }
+
+        let movementInStockUnit;
+        try {
+            movementInStockUnit = isRollItem(item)
+                ? convertMovementToSqm(item, movementAmount, movementUnitSelect.value)
+                : movementAmount;
+        } catch (error) {
+            window.alert(error.message);
+            return;
+        }
+
+        const quantityChange = roundStockQuantity(
+            movementSelect.value === "out"
+                ? -movementInStockUnit
+                : movementInStockUnit
+        );
+        const reason = await promptForReason(
+            "Stock Movement Reason",
+            `Why are you moving ${formatQuantity(movementAmount)} ${movementUnitSelect.options[movementUnitSelect.selectedIndex].textContent}?`
+        );
+        if (!reason) {
+            return;
+        }
 
         try {
             await request("/update-stock", {
@@ -949,6 +1269,7 @@ async function handleTableClick(event) {
                 body: JSON.stringify({
                     ...getLookupPayload(item),
                     quantity_change: quantityChange,
+                    reason,
                 }),
             });
             input.value = "1";
@@ -978,11 +1299,14 @@ itemForm.addEventListener("submit", handleAddItem);
 excelForm.addEventListener("submit", handleExcelUpload);
 formCategorySelect.addEventListener("change", updateCategoryDrivenFields);
 formUnitSelect.addEventListener("change", updateCategoryDrivenFields);
+formWidthInput.addEventListener("input", updateRollQuantityEstimate);
+formHeightInput.addEventListener("input", updateRollQuantityEstimate);
 refreshButton.addEventListener("click", async () => {
     await Promise.all([loadInventory(), loadLogs()]);
 });
-exportButton.addEventListener("click", handleExportExcel);
-excelExportButton.addEventListener("click", handleExportExcel);
+exportButton.addEventListener("click", handleUpdateSheetDownload);
+importTemplateButton.addEventListener("click", handleImportTemplateDownload);
+excelExportButton.addEventListener("click", handleUpdateSheetDownload);
 inventoryTableBody.addEventListener("click", handleTableClick);
 searchInput.addEventListener("input", debouncedLoadInventory);
 categoryFilter.addEventListener("change", loadInventory);

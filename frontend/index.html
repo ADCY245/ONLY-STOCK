@@ -30,7 +30,7 @@
                 </a>
                 <a class="nav-link" href="#excel" data-page-link="excel">
                     <span class="nav-title">Excel Tools</span>
-                    <span class="nav-copy">Import and export inventory</span>
+                    <span class="nav-copy">Import and update inventory</span>
                 </a>
                 <a class="nav-link" href="#logs" data-page-link="logs">
                     <span class="nav-title">Stock Logs</span>
@@ -68,7 +68,7 @@
                 </div>
                 <div class="header-actions">
                     <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
-                    <button id="exportButton" class="primary-button" type="button">Export Excel</button>
+                    <button id="exportButton" class="primary-button" type="button">Update Sheet</button>
                 </div>
             </header>
 
@@ -165,9 +165,10 @@
                             <input id="formThicknessInput" type="text" name="thickness" placeholder="1.95">
                             <small id="thicknessHint" class="field-hint">Use thickness where applicable.</small>
                         </label>
-                        <label>
+                        <label id="quantityLabel">
                             Quantity
-                            <input type="number" name="quantity" min="0" step="1" placeholder="10" required>
+                            <input id="formQuantityInput" type="number" name="quantity" min="0" step="1" placeholder="10" required>
+                            <small id="quantityHint" class="field-hint">Use the item's stock unit.</small>
                         </label>
                         <label>
                             Unit
@@ -270,27 +271,39 @@
                     <div class="section-heading">
                         <div>
                             <h3>Excel Tools</h3>
-                            <p>Import inventory updates from Excel or export the full list.</p>
+                            <p>Use one sheet for new items and another for current-stock updates.</p>
                         </div>
                         <p id="excelMessage" class="message"></p>
                     </div>
 
                     <div class="excel-grid">
                         <div class="excel-card">
-                            <h4>Upload Inventory File</h4>
-                            <p>Use a spreadsheet with Category, Brand, Type, Size, Quantity, and Unit columns.</p>
-                            <form id="excelForm" class="excel-form">
-                                <input id="excelFile" type="file" accept=".xlsx,.xls" required>
-                                <button class="secondary-button" type="submit">Upload Excel</button>
-                            </form>
+                            <h4>Import Items</h4>
+                            <p>Start with a blank sheet and add new stock rows.</p>
+                            <button id="importTemplateButton" class="secondary-button" type="button">Download Import Sheet</button>
                         </div>
 
                         <div class="excel-card excel-export">
-                            <h4>Download Current Inventory</h4>
-                            <p>Generate a fresh Excel export from the live database at any time.</p>
-                            <button id="excelExportButton" class="primary-button" type="button">Download Export</button>
+                            <h4>Update Items</h4>
+                            <p>Download current stock, edit it, add rows, or remove rows.</p>
+                            <button id="excelExportButton" class="primary-button" type="button">Download Update Sheet</button>
                         </div>
                     </div>
+
+                    <form id="excelForm" class="excel-upload-form">
+                        <label>
+                            Sheet type
+                            <select id="excelModeSelect">
+                                <option value="import">Import Items</option>
+                                <option value="update">Update Items</option>
+                            </select>
+                        </label>
+                        <label>
+                            Excel file
+                            <input id="excelFile" type="file" accept=".xlsx,.xls" required>
+                        </label>
+                        <button class="secondary-button" type="submit">Upload Excel</button>
+                    </form>
                 </section>
             </section>
 
@@ -329,6 +342,9 @@
                         <option value="out">Stock Out</option>
                     </select>
                     <input class="delta-input" type="number" value="1" min="1" step="1">
+                    <select class="movement-unit-select" aria-label="Movement unit">
+                        <option value="item">Item unit</option>
+                    </select>
                     <button class="secondary-button update-button" type="button">Apply</button>
                 </div>
             </td>
@@ -337,6 +353,19 @@
             </td>
         </tr>
     </template>
+
+    <dialog id="reasonDialog" class="reason-dialog">
+        <form id="reasonForm" method="dialog">
+            <h3 id="reasonTitle">Reason</h3>
+            <p id="reasonPrompt">Add a reason for this stock change.</p>
+            <textarea id="reasonInput" rows="4" placeholder="Example: Issued for job 428, correction after count, supplier delivery"></textarea>
+            <p id="reasonError" class="message"></p>
+            <div class="dialog-actions">
+                <button id="reasonCancelButton" class="secondary-button" type="button">Cancel</button>
+                <button class="primary-button" type="submit">Continue</button>
+            </div>
+        </form>
+    </dialog>
 
     <script src="script.js"></script>
 </body>
