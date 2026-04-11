@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+from pytz import timezone
 
 import pandas as pd
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -285,7 +286,7 @@ def build_item_payload(data):
     if quantity_error:
         return None, quantity_error
 
-    now = datetime.now()
+    now = datetime.now(timezone('Asia/Kolkata'))
     payload = {
         "category": category,
         "brand": brand,
@@ -420,7 +421,7 @@ def log_stock_change(item, action, quantity_before, quantity_after, source):
             "quantity_change": quantity_after - quantity_before,
             "unit": item["unit"],
             "source": source,
-            "changed_at": datetime.now(),
+            "changed_at": datetime.now(timezone('Asia/Kolkata')),
         }
     )
 
@@ -600,7 +601,7 @@ def update_stock():
 
     updates = {
         "quantity": new_quantity,
-        "updated_at": datetime.now(),
+        "updated_at": datetime.now(timezone('Asia/Kolkata')),
     }
 
     if data.get("thickness") is not None:
@@ -711,7 +712,7 @@ def upload_excel():
                         "width": item.get("width"),
                         "height": item.get("height"),
                         "thickness": item.get("thickness"),
-                        "updated_at": datetime.now(),
+                        "updated_at": datetime.now(timezone('Asia/Kolkata')),
                     }
                 },
             )
