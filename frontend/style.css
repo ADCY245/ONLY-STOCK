@@ -547,8 +547,15 @@ td[data-field="type"] {
     flex-wrap: wrap;
 }
 
+.movement-amount {
+    display: inline-flex;
+    align-items: stretch;
+    flex: 0 0 auto;
+}
+
 .movement-select,
 .movement-unit-select {
+    width: auto;
     padding: 0.5rem 0.7rem;
     font-size: 0.85rem;
     border-radius: 10px;
@@ -560,13 +567,17 @@ td[data-field="type"] {
 
 .movement-unit-select {
     min-width: 82px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 0;
 }
 
 .delta-input {
-    max-width: 80px;
+    width: 86px;
+    max-width: 86px;
     padding: 0.5rem 0.6rem;
     font-size: 0.85rem;
-    border-radius: 10px;
+    border-radius: 10px 0 0 10px;
     border: 1px solid var(--border);
     background: #fff;
     text-align: center;
@@ -598,6 +609,17 @@ td[data-field="type"] {
     gap: 1rem;
     cursor: pointer;
     font-weight: 600;
+}
+
+.log-summary-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.log-time {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-weight: 500;
 }
 
 .log-details {
@@ -692,6 +714,15 @@ td[data-field="type"] {
     }
 
     .delta-input {
+        width: 100%;
         max-width: 100%;
+    }
+
+    .movement-amount {
+        width: 100%;
+    }
+
+    .movement-unit-select {
+        flex: 0 0 96px;
     }
 }

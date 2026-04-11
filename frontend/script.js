@@ -649,6 +649,26 @@ function getLogDetailsMarkup(details) {
     }).join("");
 }
 
+function getLogItemPreview(log) {
+    return joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size]) || "item";
+}
+
+function renderLogEntry(log) {
+    const itemPreview = getLogItemPreview(log);
+    return `
+        <details class="log-entry">
+            <summary>
+                <span class="log-summary-text"><strong>${log.action}</strong> ${itemPreview} via ${log.source}</span>
+                <span class="log-time">${formatIstDateTime(log.changed_at)} IST</span>
+            </summary>
+            <p><strong>Item:</strong> ${itemPreview}</p>
+            <p><strong>Quantity:</strong> ${formatQuantity(log.quantity_before)} -> ${formatQuantity(log.quantity_after)} ${getDisplayUnit(log.unit)}</p>
+            <p><strong>Reason:</strong> ${log.reason || "Not recorded"}</p>
+            <div class="log-details">${getLogDetailsMarkup(log.details)}</div>
+        </details>
+    `;
+}
+
 async function request(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
@@ -926,32 +946,10 @@ function renderLogs(logs) {
     sidebarLogCount.textContent = String(logs.length);
     overviewLogBadge.textContent = String(logs.length);
 
-    const markup = logs.map((log) => `
-        <details class="log-entry">
-            <summary>
-                <span><strong>${log.action}</strong> via ${log.source}</span>
-                <span>${formatIstDateTime(log.changed_at)} IST</span>
-            </summary>
-            <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
-            <p>${formatQuantity(log.quantity_before)} -> ${formatQuantity(log.quantity_after)} ${getDisplayUnit(log.unit)}</p>
-            <p><strong>Reason:</strong> ${log.reason || "Not recorded"}</p>
-            <div class="log-details">${getLogDetailsMarkup(log.details)}</div>
-        </details>
-    `).join("");
+    const markup = logs.map((log) => renderLogEntry(log)).join("");
 
     logsList.innerHTML = markup;
-    overviewLogs.innerHTML = logs.slice(0, 4).map((log) => `
-        <details class="log-entry">
-            <summary>
-                <span><strong>${log.action}</strong> via ${log.source}</span>
-                <span>${formatIstDateTime(log.changed_at)} IST</span>
-            </summary>
-            <p>${joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size])}</p>
-            <p>${formatQuantity(log.quantity_before)} -> ${formatQuantity(log.quantity_after)} ${getDisplayUnit(log.unit)}</p>
-            <p><strong>Reason:</strong> ${log.reason || "Not recorded"}</p>
-            <div class="log-details">${getLogDetailsMarkup(log.details)}</div>
-        </details>
-    `).join("");
+    overviewLogs.innerHTML = logs.slice(0, 4).map((log) => renderLogEntry(log)).join("");
 }
 
 async function loadInventory() {

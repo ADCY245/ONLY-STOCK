@@ -341,10 +341,12 @@
                         <option value="in">Stock In</option>
                         <option value="out">Stock Out</option>
                     </select>
-                    <input class="delta-input" type="number" value="1" min="1" step="1">
-                    <select class="movement-unit-select" aria-label="Movement unit">
-                        <option value="item">Item unit</option>
-                    </select>
+                    <div class="movement-amount">
+                        <input class="delta-input" type="number" value="1" min="1" step="1">
+                        <select class="movement-unit-select" aria-label="Movement unit">
+                            <option value="item">Item unit</option>
+                        </select>
+                    </div>
                     <button class="secondary-button update-button" type="button">Apply</button>
                 </div>
             </td>
