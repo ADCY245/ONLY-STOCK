@@ -6,19 +6,30 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from flask import Flask, jsonify, request, send_file, send_from_directory
+from bson import ObjectId
+from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
 from pymongo.errors import DuplicateKeyError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
-    from .db import get_database, get_inventory_collection, get_stock_logs_collection
+    from .db import get_database, get_inventory_collection, get_stock_logs_collection, get_users_collection
 except ImportError:
-    from db import get_database, get_inventory_collection, get_stock_logs_collection
+    from db import get_database, get_inventory_collection, get_stock_logs_collection, get_users_collection
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "only-stock-dev-secret")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+ALLOWED_SIGNUP_DOMAIN = "@chemo.in"
+SUPERADMIN_EMAIL = "athulnair3096@gmail.com"
+SUPERADMIN_PASSWORD = "ADMIN123"
+ALLOWED_ROLES = {"user", "admin", "workshop"}
+READ_ONLY_ROLES = {"user"}
+WRITE_ROLES = {"admin", "workshop"}
+LOG_ACCESS_ROLES = {"admin"}
 
 REQUIRED_EXCEL_COLUMNS = [
     "Category",
@@ -110,6 +121,102 @@ def clean_text(value):
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def normalize_email(value):
+    cleaned = clean_text(value)
+    return cleaned.lower() if cleaned else None
+
+
+def serialize_user(user):
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "role": user["role"],
+        "created_at": serialize_datetime_ist(user.get("created_at")),
+        "updated_at": serialize_datetime_ist(user.get("updated_at")),
+    }
+
+
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    try:
+        return get_users_collection().find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        session.clear()
+        return None
+
+
+def require_auth():
+    user = get_current_user()
+    if not user:
+        return None, (jsonify({"error": "Authentication required"}), 401)
+    return user, None
+
+
+def require_role(*roles):
+    user, error_response = require_auth()
+    if error_response:
+        return None, error_response
+    if user["role"] not in roles:
+        return None, (jsonify({"error": "You do not have permission for this action"}), 403)
+    return user, None
+
+
+def ensure_superadmin():
+    """Ensure superadmin user exists with the configured password."""
+    users_collection = get_users_collection()
+    user = users_collection.find_one({"email": SUPERADMIN_EMAIL})
+
+    now = now_ist()
+    if user:
+        # Update password to ensure it matches SUPERADMIN_PASSWORD
+        users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "password_hash": generate_password_hash(SUPERADMIN_PASSWORD),
+                "role": "admin",
+                "updated_at": now,
+            }}
+        )
+        return {"created": False, "updated": True, "email": SUPERADMIN_EMAIL}
+    else:
+        # Create new superadmin
+        user = {
+            "email": SUPERADMIN_EMAIL,
+            "password_hash": generate_password_hash(SUPERADMIN_PASSWORD),
+            "role": "admin",
+            "created_at": now,
+            "updated_at": now,
+        }
+        result = users_collection.insert_one(user)
+        return {"created": True, "updated": False, "email": SUPERADMIN_EMAIL, "id": str(result.inserted_id)}
+
+
+@app.route("/init-superadmin", methods=["POST"])
+def init_superadmin():
+    """Endpoint to initialize/create the superadmin user."""
+    try:
+        result = ensure_superadmin()
+        return jsonify({"message": "Superadmin ensured", "result": result})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+def validate_signup_email(email):
+    if email == SUPERADMIN_EMAIL:
+        return None
+    if not email.endswith(ALLOWED_SIGNUP_DOMAIN):
+        return "Signup is not permitted for this email"
+    return None
+
+
+def validate_password(password):
+    if not isinstance(password, str) or len(password.strip()) < 6:
+        return "Password must be at least 6 characters"
+    return None
 
 
 def parse_integer(value, field_name, allow_negative=False):
@@ -646,8 +753,116 @@ def health():
         )
 
 
+@app.route("/auth/me", methods=["GET"])
+def auth_me():
+    user, error_response = require_auth()
+    if error_response:
+        return error_response
+    return jsonify({"user": serialize_user(user)})
+
+
+@app.route("/auth/signup", methods=["POST"])
+def auth_signup():
+    users_collection = get_users_collection()
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    password = data.get("password")
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    email_error = validate_signup_email(email)
+    if email_error:
+        return jsonify({"error": email_error}), 400
+
+    password_error = validate_password(password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    role = "user"
+    if email == SUPERADMIN_EMAIL:
+        role = "admin"
+
+    now = now_ist()
+    user = {
+        "email": email,
+        "password_hash": generate_password_hash(password.strip()),
+        "role": role,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    try:
+        result = users_collection.insert_one(user)
+    except DuplicateKeyError:
+        return jsonify({"error": "An account with this email already exists"}), 409
+
+    user["_id"] = result.inserted_id
+    session["user_id"] = str(result.inserted_id)
+    return jsonify({"message": "Signup successful", "user": serialize_user(user)}), 201
+
+
+@app.route("/auth/login", methods=["POST"])
+def auth_login():
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    password = data.get("password")
+
+    if not email or not isinstance(password, str):
+        return jsonify({"error": "Email and password are required"}), 400
+
+    if email != SUPERADMIN_EMAIL and not email.endswith(ALLOWED_SIGNUP_DOMAIN):
+        return jsonify({"error": "Not permitted to login"}), 403
+
+    user = get_users_collection().find_one({"email": email})
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    session["user_id"] = str(user["_id"])
+    return jsonify({"message": "Login successful", "user": serialize_user(user)})
+
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"message": "Logged out"})
+
+
+@app.route("/auth/forgot-password", methods=["POST"])
+def auth_forgot_password():
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    new_password = data.get("new_password")
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    password_error = validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    user = get_users_collection().find_one({"email": email})
+    if not user:
+        return jsonify({"error": "Account not found"}), 404
+
+    get_users_collection().update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "password_hash": generate_password_hash(new_password.strip()),
+                "updated_at": now_ist(),
+            }
+        },
+    )
+    session["user_id"] = str(user["_id"])
+    updated_user = get_users_collection().find_one({"_id": user["_id"]})
+    return jsonify({"message": "Password reset successful", "user": serialize_user(updated_user)})
+
+
 @app.route("/add-item", methods=["POST"])
 def add_item():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     item, error = build_item_payload(data)
@@ -668,6 +883,9 @@ def add_item():
 
 @app.route("/inventory", methods=["GET"])
 def get_inventory():
+    _, error_response = require_role("user", "workshop", "admin")
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     query, error = create_inventory_query(request.args)
     if error:
@@ -679,6 +897,9 @@ def get_inventory():
 
 @app.route("/stock-logs", methods=["GET"])
 def get_stock_logs():
+    _, error_response = require_role(*LOG_ACCESS_ROLES)
+    if error_response:
+        return error_response
     stock_logs_collection = get_stock_logs_collection()
     limit, error = parse_integer(request.args.get("limit", 50), "limit")
     if error:
@@ -690,6 +911,9 @@ def get_stock_logs():
 
 @app.route("/update-stock", methods=["PUT"])
 def update_stock():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
@@ -759,6 +983,9 @@ def update_stock():
 
 @app.route("/delete-item", methods=["DELETE"])
 def delete_item():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     data = request.get_json(silent=True) or {}
     lookup, error = build_lookup(data)
@@ -777,6 +1004,9 @@ def delete_item():
 
 @app.route("/upload-excel", methods=["POST"])
 def upload_excel():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     uploaded_file = request.files.get("file")
     upload_mode = (request.form.get("mode") or "import").strip().lower()
@@ -902,12 +1132,18 @@ def upload_excel():
 
 @app.route("/download-import-template", methods=["GET"])
 def download_import_template():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     dataframe = pd.DataFrame(columns=EXCEL_COLUMNS)
     return send_excel(dataframe, "import_items_template.xlsx", "Import Items")
 
 
 @app.route("/export-update-excel", methods=["GET"])
 def export_update_excel():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
     inventory_collection = get_inventory_collection()
     items = list(inventory_collection.find().sort(get_inventory_sort()))
     export_rows = build_export_rows(items)

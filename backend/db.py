@@ -68,3 +68,10 @@ def get_stock_logs_collection():
     collection = get_database()["stock_logs"]
     collection.create_index([("item_key", 1), ("changed_at", -1)])
     return collection
+
+
+def get_users_collection():
+    collection = get_database()["users"]
+    collection.create_index([("email", 1)], unique=True, name="user_email_unique")
+    collection.create_index([("role", 1)])
+    return collection
