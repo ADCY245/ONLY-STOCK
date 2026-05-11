@@ -56,7 +56,7 @@ const authPanels = [...document.querySelectorAll("[data-auth-panel]")];
 const excelForm = document.getElementById("excelForm");
 const excelFileInput = document.getElementById("excelFile");
 const refreshButton = document.getElementById("refreshButton");
-const exportButton = document.getElementById("exportButton");
+const adminPanelButton = document.getElementById("adminPanelButton");
 const excelExportButton = document.getElementById("excelExportButton");
 const importTemplateButton = document.getElementById("importTemplateButton");
 const excelModeSelect = document.getElementById("excelModeSelect");
@@ -876,6 +876,10 @@ async function handleLogout() {
     setAuthTab("login");
 }
 
+function handleAdminPanelClick() {
+    window.location.hash = "#logs";
+}
+
 function populateSelectOptions(items) {
     const uniqueBrands = [...new Set(items.map((item) => getDisplayValue(item.brand)).filter(Boolean))].sort();
     const uniqueTypes = [...new Set(items.map((item) => getDisplayValue(item.type)).filter(Boolean))].sort();
@@ -1525,7 +1529,7 @@ logoutButton.addEventListener("click", handleLogout);
 refreshButton.addEventListener("click", async () => {
     await initializeAppData();
 });
-exportButton.addEventListener("click", handleUpdateSheetDownload);
+adminPanelButton.addEventListener("click", handleAdminPanelClick);
 importTemplateButton.addEventListener("click", handleImportTemplateDownload);
 excelExportButton.addEventListener("click", handleUpdateSheetDownload);
 inventoryTableBody.addEventListener("click", handleTableClick);
