@@ -25,7 +25,6 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 ALLOWED_SIGNUP_DOMAIN = "@chemo.in"
 SUPERADMIN_EMAIL = "athulnair3096@gmail.com"
-SUPERADMIN_PASSWORD = "ADMIN123"
 ALLOWED_ROLES = {"user", "admin", "workshop"}
 READ_ONLY_ROLES = {"user"}
 WRITE_ROLES = {"admin", "workshop"}
@@ -165,44 +164,23 @@ def require_role(*roles):
     return user, None
 
 
-def ensure_superadmin():
-    """Ensure superadmin user exists with the configured password."""
+def create_superadmin_if_missing(password):
     users_collection = get_users_collection()
     user = users_collection.find_one({"email": SUPERADMIN_EMAIL})
+    if user:
+        return user, False
 
     now = now_ist()
-    if user:
-        # Update password to ensure it matches SUPERADMIN_PASSWORD
-        users_collection.update_one(
-            {"_id": user["_id"]},
-            {"$set": {
-                "password_hash": generate_password_hash(SUPERADMIN_PASSWORD),
-                "role": "admin",
-                "updated_at": now,
-            }}
-        )
-        return {"created": False, "updated": True, "email": SUPERADMIN_EMAIL}
-    else:
-        # Create new superadmin
-        user = {
-            "email": SUPERADMIN_EMAIL,
-            "password_hash": generate_password_hash(SUPERADMIN_PASSWORD),
-            "role": "admin",
-            "created_at": now,
-            "updated_at": now,
-        }
-        result = users_collection.insert_one(user)
-        return {"created": True, "updated": False, "email": SUPERADMIN_EMAIL, "id": str(result.inserted_id)}
-
-
-@app.route("/init-superadmin", methods=["POST"])
-def init_superadmin():
-    """Endpoint to initialize/create the superadmin user."""
-    try:
-        result = ensure_superadmin()
-        return jsonify({"message": "Superadmin ensured", "result": result})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    user = {
+        "email": SUPERADMIN_EMAIL,
+        "password_hash": generate_password_hash(password.strip()),
+        "role": "admin",
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = users_collection.insert_one(user)
+    user["_id"] = result.inserted_id
+    return user, True
 
 
 def validate_signup_email(email):
@@ -757,7 +735,7 @@ def health():
 def auth_me():
     user, error_response = require_auth()
     if error_response:
-        return error_response
+        return jsonify({"user": None}), 200
     return jsonify({"user": serialize_user(user)})
 
 
@@ -814,6 +792,12 @@ def auth_login():
         return jsonify({"error": "Not permitted to login"}), 403
 
     user = get_users_collection().find_one({"email": email})
+    if not user and email == SUPERADMIN_EMAIL:
+        password_error = validate_password(password)
+        if password_error:
+            return jsonify({"error": password_error}), 400
+        user, _ = create_superadmin_if_missing(password)
+
     if not user or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "Invalid email or password"}), 401
 

@@ -796,7 +796,7 @@ async function checkAuthSession() {
     try {
         const response = await request("/auth/me");
         setAuthenticatedUser(response.user);
-        return true;
+        return Boolean(response.user);
     } catch (error) {
         setAuthenticatedUser(null);
         return false;
