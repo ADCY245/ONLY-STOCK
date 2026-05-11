@@ -7,12 +7,78 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="layout">
+    <section id="authShell" class="auth-shell">
+        <div class="auth-hero">
+            <p class="eyebrow">Only Stock</p>
+            <h1>Inventory access</h1>
+            <p class="sidebar-copy">Sign in to view inventory with simple MongoDB-backed authentication and role-based access.</p>
+        </div>
+
+        <div class="auth-panel">
+            <div class="auth-tabs" role="tablist" aria-label="Authentication">
+                <button class="auth-tab is-active" type="button" data-auth-tab="login">Login</button>
+                <button class="auth-tab" type="button" data-auth-tab="signup">Signup</button>
+                <button class="auth-tab" type="button" data-auth-tab="forgot">Forgot Password</button>
+            </div>
+
+            <form id="loginForm" class="auth-form is-active" data-auth-panel="login" novalidate>
+                <h2>Login</h2>
+                <label>
+                    Email
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" placeholder="Enter password" required>
+                </label>
+                <p id="loginMessage" class="message"></p>
+                <button class="primary-button" type="submit">Login</button>
+            </form>
+
+            <form id="signupForm" class="auth-form" data-auth-panel="signup" novalidate>
+                <h2>Signup</h2>
+                <label>
+                    Email
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" placeholder="Minimum 6 characters" required>
+                </label>
+                <p class="field-hint">New accounts are created with basic access. Access level changes are managed by admin.</p>
+                <p id="signupMessage" class="message"></p>
+                <button class="primary-button" type="submit">Create account</button>
+            </form>
+
+            <form id="forgotForm" class="auth-form" data-auth-panel="forgot" novalidate>
+                <h2>Forgot Password</h2>
+                <label>
+                    Email
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                </label>
+                <label>
+                    New password
+                    <input type="password" name="new_password" placeholder="Enter new password" required>
+                </label>
+                <p class="field-hint">This simple reset updates the password directly for the matching MongoDB user.</p>
+                <p id="forgotMessage" class="message"></p>
+                <button class="primary-button" type="submit">Reset password</button>
+            </form>
+        </div>
+    </section>
+
+    <div id="appShell" class="layout app-shell is-hidden">
         <aside class="sidebar">
             <div class="brand-block">
                 <p class="eyebrow">Inventory System</p>
                 <h1>Only Stock</h1>
                 <p class="sidebar-copy">Move between focused pages for overview, inventory management, Excel operations, and stock history.</p>
+
+                <div class="session-card">
+                    <p id="sessionEmail" class="session-email">Not signed in</p>
+                    <p id="sessionRole" class="session-role">Role</p>
+                    <button id="logoutButton" class="secondary-button" type="button">Logout</button>
+                </div>
             </div>
 
             <nav class="nav-panel" aria-label="Primary">
@@ -20,7 +86,7 @@
                     <span class="nav-title">Overview</span>
                     <span class="nav-copy">Snapshot, categories, and structure</span>
                 </a>
-                <a class="nav-link" href="#add-item" data-page-link="add-item">
+                <a class="nav-link" href="#add-item" data-page-link="add-item" data-min-role="workshop">
                     <span class="nav-title">Add Item</span>
                     <span class="nav-copy">Create new inventory records</span>
                 </a>
@@ -28,11 +94,11 @@
                     <span class="nav-title">Inventory</span>
                     <span class="nav-copy">Search, update, and delete stock</span>
                 </a>
-                <a class="nav-link" href="#excel" data-page-link="excel">
+                <a class="nav-link" href="#excel" data-page-link="excel" data-min-role="workshop">
                     <span class="nav-title">Excel Tools</span>
                     <span class="nav-copy">Import and update inventory</span>
                 </a>
-                <a class="nav-link" href="#logs" data-page-link="logs">
+                <a class="nav-link" href="#logs" data-page-link="logs" data-min-role="admin">
                     <span class="nav-title">Stock Logs</span>
                     <span class="nav-copy">Track recent stock changes</span>
                 </a>
@@ -68,7 +134,7 @@
                 </div>
                 <div class="header-actions">
                     <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
-                    <button id="exportButton" class="primary-button" type="button">Update Sheet</button>
+                    <button id="exportButton" class="primary-button" type="button" data-min-role="workshop">Update Sheet</button>
                 </div>
             </header>
 
@@ -108,7 +174,7 @@
                             <span class="badge" id="overviewLogBadge">0</span>
                         </div>
                         <div id="overviewLogs" class="logs-list">
-                            <p class="empty-state">No stock history yet</p>
+                            <p class="empty-state">Recent activity is only available to admins.</p>
                         </div>
                     </section>
                 </div>
@@ -123,7 +189,7 @@
                 </section>
             </section>
 
-            <section class="page" data-page="add-item">
+            <section class="page" data-page="add-item" data-min-role="workshop">
                 <section class="panel">
                     <div class="section-heading">
                         <div>
@@ -235,7 +301,7 @@
                     <div class="section-heading">
                         <div>
                             <h3>Inventory Table</h3>
-                            <p>Record stock coming in or going out. Quantity never goes below zero.</p>
+                            <p id="inventoryHelpText">Record stock coming in or going out. Quantity never goes below zero.</p>
                         </div>
                     </div>
 
@@ -252,8 +318,8 @@
                                     <th data-align="right">Thickness</th>
                                     <th data-align="right">Quantity</th>
                                     <th>Unit</th>
-                                    <th data-align="center">Stock Movement</th>
-                                    <th data-align="center">Delete</th>
+                                    <th data-align="center" data-write-column>Stock Movement</th>
+                                    <th data-align="center" data-write-column>Delete</th>
                                 </tr>
                             </thead>
                             <tbody id="inventoryTableBody">
@@ -266,7 +332,7 @@
                 </section>
             </section>
 
-            <section class="page" data-page="excel">
+            <section class="page" data-page="excel" data-min-role="workshop">
                 <section class="panel">
                     <div class="section-heading">
                         <div>
@@ -307,7 +373,7 @@
                 </section>
             </section>
 
-            <section class="page" data-page="logs">
+            <section class="page" data-page="logs" data-min-role="admin">
                 <section class="panel">
                     <div class="section-heading">
                         <div>
@@ -335,7 +401,7 @@
             <td data-field="thickness"></td>
             <td data-field="quantity"></td>
             <td data-field="unit"></td>
-            <td>
+            <td data-write-cell>
                 <div class="update-controls">
                     <select class="movement-select">
                         <option value="in">Stock In</option>
@@ -350,7 +416,7 @@
                     <button class="secondary-button update-button" type="button">Apply</button>
                 </div>
             </td>
-            <td>
+            <td data-write-cell>
                 <button class="danger-button delete-button" type="button">Delete</button>
             </td>
         </tr>

@@ -5,6 +5,13 @@ const API_BASE_URL = window.location.protocol.startsWith("http")
 const state = {
     inventory: [],
     logs: [],
+    user: null,
+};
+
+const ROLE_LEVELS = {
+    user: 1,
+    workshop: 2,
+    admin: 3,
 };
 
 const PAGE_META = {
@@ -36,6 +43,16 @@ const PAGE_META = {
 };
 
 const itemForm = document.getElementById("itemForm");
+const loginForm = document.getElementById("loginForm");
+const signupForm = document.getElementById("signupForm");
+const forgotForm = document.getElementById("forgotForm");
+const loginMessage = document.getElementById("loginMessage");
+const signupMessage = document.getElementById("signupMessage");
+const forgotMessage = document.getElementById("forgotMessage");
+const authShell = document.getElementById("authShell");
+const appShell = document.getElementById("appShell");
+const authTabs = [...document.querySelectorAll("[data-auth-tab]")];
+const authPanels = [...document.querySelectorAll("[data-auth-panel]")];
 const excelForm = document.getElementById("excelForm");
 const excelFileInput = document.getElementById("excelFile");
 const refreshButton = document.getElementById("refreshButton");
@@ -65,6 +82,8 @@ const pageTitle = document.getElementById("pageTitle");
 const pageDescription = document.getElementById("pageDescription");
 const pages = [...document.querySelectorAll("[data-page]")];
 const pageLinks = [...document.querySelectorAll("[data-page-link]")];
+const roleBoundElements = [...document.querySelectorAll("[data-min-role]")];
+const writeColumns = [...document.querySelectorAll("[data-write-column]")];
 const reasonDialog = document.getElementById("reasonDialog");
 const reasonForm = document.getElementById("reasonForm");
 const reasonTitle = document.getElementById("reasonTitle");
@@ -89,6 +108,10 @@ const formQuantityInput = document.getElementById("formQuantityInput");
 const thicknessHint = document.getElementById("thicknessHint");
 const quantityHint = document.getElementById("quantityHint");
 const lengthLabelText = document.getElementById("lengthLabelText");
+const inventoryHelpText = document.getElementById("inventoryHelpText");
+const sessionEmail = document.getElementById("sessionEmail");
+const sessionRole = document.getElementById("sessionRole");
+const logoutButton = document.getElementById("logoutButton");
 
 const formBrandInput = itemForm.querySelector('input[name="brand"]');
 const formTypeInput = itemForm.querySelector('input[name="type"]');
@@ -298,6 +321,68 @@ function setMessage(element, text, tone = "") {
         element.dataset.tone = tone;
     } else {
         delete element.dataset.tone;
+    }
+}
+
+function getRoleLevel(role) {
+    return ROLE_LEVELS[role] || 0;
+}
+
+function userHasRole(minRole) {
+    return getRoleLevel(state.user?.role) >= getRoleLevel(minRole);
+}
+
+function isReadOnlyUser() {
+    return state.user?.role === "user";
+}
+
+function setAuthTab(tabName) {
+    authTabs.forEach((tab) => {
+        tab.classList.toggle("is-active", tab.dataset.authTab === tabName);
+    });
+    authPanels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.dataset.authPanel === tabName);
+    });
+}
+
+function updateRoleVisibility() {
+    roleBoundElements.forEach((element) => {
+        const minRole = element.dataset.minRole;
+        const allowed = !minRole || userHasRole(minRole);
+        element.classList.toggle("is-hidden", !allowed);
+    });
+
+    writeColumns.forEach((cell) => {
+        cell.classList.toggle("is-hidden", isReadOnlyUser());
+    });
+
+    inventoryHelpText.textContent = isReadOnlyUser()
+        ? "You have read-only access. You can view overview data, inventory tree, and inventory items."
+        : "Record stock coming in or going out. Quantity never goes below zero.";
+
+    sessionEmail.textContent = state.user?.email || "Not signed in";
+    sessionRole.textContent = state.user ? `Role: ${state.user.role}` : "Role";
+}
+
+function setAuthenticatedUser(user) {
+    state.user = user || null;
+    const isLoggedIn = Boolean(state.user);
+    authShell.classList.toggle("is-hidden", isLoggedIn);
+    appShell.classList.toggle("is-hidden", !isLoggedIn);
+    updateRoleVisibility();
+
+    if (!isLoggedIn) {
+        state.inventory = [];
+        state.logs = [];
+        return;
+    }
+
+    const page = getCurrentPage();
+    if ((page === "add-item" || page === "excel") && !userHasRole("workshop")) {
+        window.location.hash = "#overview";
+    }
+    if (page === "logs" && !userHasRole("admin")) {
+        window.location.hash = "#overview";
     }
 }
 
@@ -683,6 +768,7 @@ function renderLogEntry(log) {
 async function request(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
+        credentials: "same-origin",
         headers: {
             ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
             ...(options.headers || {}),
@@ -698,10 +784,96 @@ async function request(path, options = {}) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        throw new Error(data.error || "Request failed");
+        const error = new Error(data.error || "Request failed");
+        error.status = response.status;
+        throw error;
     }
 
     return data;
+}
+
+async function checkAuthSession() {
+    try {
+        const response = await request("/auth/me");
+        setAuthenticatedUser(response.user);
+        return true;
+    } catch (error) {
+        setAuthenticatedUser(null);
+        return false;
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const formData = new FormData(loginForm);
+
+    try {
+        const response = await request("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({
+                email: String(formData.get("email") || "").trim(),
+                password: String(formData.get("password") || ""),
+            }),
+        });
+        loginForm.reset();
+        setMessage(loginMessage, "Login successful", "success");
+        setAuthenticatedUser(response.user);
+        await initializeAppData();
+    } catch (error) {
+        setMessage(loginMessage, error.message, "error");
+    }
+}
+
+async function handleSignup(event) {
+    event.preventDefault();
+    const formData = new FormData(signupForm);
+
+    try {
+        const response = await request("/auth/signup", {
+            method: "POST",
+            body: JSON.stringify({
+                email: String(formData.get("email") || "").trim(),
+                password: String(formData.get("password") || ""),
+            }),
+        });
+        signupForm.reset();
+        setMessage(signupMessage, "Signup successful", "success");
+        setAuthenticatedUser(response.user);
+        await initializeAppData();
+    } catch (error) {
+        setMessage(signupMessage, error.message, "error");
+    }
+}
+
+async function handleForgotPassword(event) {
+    event.preventDefault();
+    const formData = new FormData(forgotForm);
+
+    try {
+        const response = await request("/auth/forgot-password", {
+            method: "POST",
+            body: JSON.stringify({
+                email: String(formData.get("email") || "").trim(),
+                new_password: String(formData.get("new_password") || ""),
+            }),
+        });
+        forgotForm.reset();
+        setMessage(forgotMessage, "Password reset successful", "success");
+        setAuthenticatedUser(response.user);
+        await initializeAppData();
+    } catch (error) {
+        setMessage(forgotMessage, error.message, "error");
+    }
+}
+
+async function handleLogout() {
+    try {
+        await request("/auth/logout", { method: "POST" });
+    } catch (error) {
+        // Logout should still clear the local session state.
+    }
+    setAuthenticatedUser(null);
+    setAuthTab("login");
 }
 
 function populateSelectOptions(items) {
@@ -903,9 +1075,10 @@ function renderOverviewStats(items) {
 
 function renderTable(items) {
     statusText.textContent = `${items.length} item(s) found`;
+    const columnCount = isReadOnlyUser() ? 9 : 11;
 
     if (items.length === 0) {
-        inventoryTableBody.innerHTML = '<tr><td colspan="11" class="empty-state">No inventory available</td></tr>';
+        inventoryTableBody.innerHTML = `<tr><td colspan="${columnCount}" class="empty-state">No inventory available</td></tr>`;
         return;
     }
 
@@ -924,6 +1097,10 @@ function renderTable(items) {
         row.querySelector('[data-field="thickness"]').textContent = item.thickness || "-";
         row.querySelector('[data-field="quantity"]').textContent = formatQuantity(item.quantity);
         row.querySelector('[data-field="unit"]').textContent = getDisplayUnit(item.unit);
+
+        row.querySelectorAll("[data-write-cell]").forEach((cell) => {
+            cell.classList.toggle("is-hidden", isReadOnlyUser());
+        });
 
         const deltaInput = row.querySelector(".delta-input");
         const movementUnitSelect = row.querySelector(".movement-unit-select");
@@ -964,6 +1141,9 @@ function renderLogs(logs) {
 }
 
 async function loadInventory() {
+    if (!state.user) {
+        return;
+    }
     setMessage(statusText, "Loading inventory...");
 
     try {
@@ -989,6 +1169,14 @@ async function loadInventory() {
 }
 
 async function loadLogs() {
+    if (!userHasRole("admin")) {
+        state.logs = [];
+        sidebarLogCount.textContent = "0";
+        overviewLogBadge.textContent = "0";
+        logsList.innerHTML = '<p class="empty-state">Stock logs are available only for admins.</p>';
+        overviewLogs.innerHTML = '<p class="empty-state">Recent activity is available only for admins.</p>';
+        return;
+    }
     try {
         const logs = await request("/stock-logs?limit=12");
         state.logs = Array.isArray(logs) ? logs : [];
@@ -1192,6 +1380,9 @@ async function handleUpdateSheetDownload() {
 }
 
 async function handleTableClick(event) {
+    if (isReadOnlyUser()) {
+        return;
+    }
     const button = event.target.closest("button");
     if (!button) {
         return;
@@ -1294,18 +1485,45 @@ function debounce(callback, delay = 300) {
 
 const debouncedLoadInventory = debounce(loadInventory, 250);
 
+async function initializeAppData() {
+    if (!state.user) {
+        return;
+    }
+    await Promise.all([loadInventory(), loadLogs()]);
+}
+
 window.addEventListener("hashchange", () => {
+    if (!state.user) {
+        return;
+    }
+    const page = getCurrentPage();
+    if ((page === "add-item" || page === "excel") && !userHasRole("workshop")) {
+        window.location.hash = "#overview";
+        return;
+    }
+    if (page === "logs" && !userHasRole("admin")) {
+        window.location.hash = "#overview";
+        return;
+    }
     showPage(getCurrentPage());
 });
 
+authTabs.forEach((tab) => {
+    tab.addEventListener("click", () => setAuthTab(tab.dataset.authTab));
+});
+
+loginForm.addEventListener("submit", handleLogin);
+signupForm.addEventListener("submit", handleSignup);
+forgotForm.addEventListener("submit", handleForgotPassword);
 itemForm.addEventListener("submit", handleAddItem);
 excelForm.addEventListener("submit", handleExcelUpload);
 formCategorySelect.addEventListener("change", updateCategoryDrivenFields);
 formUnitSelect.addEventListener("change", updateCategoryDrivenFields);
 formWidthInput.addEventListener("input", updateRollQuantityEstimate);
 formHeightInput.addEventListener("input", updateRollQuantityEstimate);
+logoutButton.addEventListener("click", handleLogout);
 refreshButton.addEventListener("click", async () => {
-    await Promise.all([loadInventory(), loadLogs()]);
+    await initializeAppData();
 });
 exportButton.addEventListener("click", handleUpdateSheetDownload);
 importTemplateButton.addEventListener("click", handleImportTemplateDownload);
@@ -1321,4 +1539,11 @@ lowStockThreshold.addEventListener("input", debouncedLoadInventory);
 
 showPage(getCurrentPage());
 updateCategoryDrivenFields();
-Promise.all([loadInventory(), loadLogs()]);
+setAuthTab("login");
+setAuthenticatedUser(null);
+checkAuthSession().then((isAuthenticated) => {
+    if (isAuthenticated) {
+        showPage(getCurrentPage());
+        initializeAppData();
+    }
+});
