@@ -132,6 +132,7 @@ def serialize_user(user):
         "id": str(user["_id"]),
         "email": user["email"],
         "role": user["role"],
+        "is_superadmin": user["email"] == SUPERADMIN_EMAIL,
         "created_at": serialize_datetime_ist(user.get("created_at")),
         "updated_at": serialize_datetime_ist(user.get("updated_at")),
     }
@@ -891,6 +892,74 @@ def get_stock_logs():
 
     logs = stock_logs_collection.find().sort("changed_at", -1).limit(limit)
     return jsonify([serialize_log(log) for log in logs])
+
+
+@app.route("/admin/users", methods=["GET"])
+def get_users():
+    _, error_response = require_role("admin")
+    if error_response:
+        return error_response
+
+    users = get_users_collection().find().sort("created_at", 1)
+    return jsonify([serialize_user(user) for user in users])
+
+
+@app.route("/admin/users/<user_id>/role", methods=["PUT"])
+def update_user_role(user_id):
+    current_user, error_response = require_role("admin")
+    if error_response:
+        return error_response
+
+    data = request.get_json(silent=True) or {}
+    role = clean_text(data.get("role"))
+    if role not in ALLOWED_ROLES:
+        return jsonify({"error": "Role must be user, admin, or workshop"}), 400
+
+    try:
+        target_object_id = ObjectId(user_id)
+    except Exception:
+        return jsonify({"error": "Invalid user id"}), 400
+
+    users_collection = get_users_collection()
+    target_user = users_collection.find_one({"_id": target_object_id})
+    if not target_user:
+        return jsonify({"error": "User not found"}), 404
+
+    if target_user["email"] == SUPERADMIN_EMAIL and role != "admin":
+        return jsonify({"error": "Superadmin role cannot be changed"}), 400
+
+    users_collection.update_one(
+        {"_id": target_object_id},
+        {"$set": {"role": role, "updated_at": now_ist()}},
+    )
+    updated_user = users_collection.find_one({"_id": target_object_id})
+    return jsonify({"message": "User role updated", "user": serialize_user(updated_user)})
+
+
+@app.route("/admin/users/<user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    current_user, error_response = require_role("admin")
+    if error_response:
+        return error_response
+
+    try:
+        target_object_id = ObjectId(user_id)
+    except Exception:
+        return jsonify({"error": "Invalid user id"}), 400
+
+    users_collection = get_users_collection()
+    target_user = users_collection.find_one({"_id": target_object_id})
+    if not target_user:
+        return jsonify({"error": "User not found"}), 404
+
+    if target_user["email"] == SUPERADMIN_EMAIL:
+        return jsonify({"error": "Superadmin cannot be removed"}), 400
+
+    if str(target_user["_id"]) == str(current_user["_id"]):
+        return jsonify({"error": "You cannot remove your own account"}), 400
+
+    users_collection.delete_one({"_id": target_object_id})
+    return jsonify({"message": "User removed"})
 
 
 @app.route("/update-stock", methods=["PUT"])

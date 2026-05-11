@@ -6,6 +6,7 @@ const state = {
     inventory: [],
     logs: [],
     user: null,
+    users: [],
 };
 
 const ROLE_LEVELS = {
@@ -35,10 +36,10 @@ const PAGE_META = {
         title: "Excel Tools",
         description: "Import bulk updates and export the current inventory to spreadsheet format.",
     },
-    logs: {
-        eyebrow: "Workspace",
-        title: "Stock Logs",
-        description: "Review recent manual and Excel-driven stock changes in one place.",
+    admin: {
+        eyebrow: "Admin",
+        title: "Admin Panel",
+        description: "Manage users and review stock activity from one admin-only workspace.",
     },
 };
 
@@ -73,9 +74,11 @@ const overviewLogBadge = document.getElementById("overviewLogBadge");
 const overviewLogs = document.getElementById("overviewLogs");
 const treeView = document.getElementById("treeView");
 const logsList = document.getElementById("logsList");
+const usersTableBody = document.getElementById("usersTableBody");
 const statusText = document.getElementById("statusText");
 const formMessage = document.getElementById("formMessage");
 const excelMessage = document.getElementById("excelMessage");
+const adminUsersMessage = document.getElementById("adminUsersMessage");
 const rowTemplate = document.getElementById("inventoryRowTemplate");
 const pageEyebrow = document.getElementById("pageEyebrow");
 const pageTitle = document.getElementById("pageTitle");
@@ -374,6 +377,7 @@ function setAuthenticatedUser(user) {
     if (!isLoggedIn) {
         state.inventory = [];
         state.logs = [];
+        state.users = [];
         return;
     }
 
@@ -381,7 +385,7 @@ function setAuthenticatedUser(user) {
     if ((page === "add-item" || page === "excel") && !userHasRole("workshop")) {
         window.location.hash = "#overview";
     }
-    if (page === "logs" && !userHasRole("admin")) {
+    if (page === "admin" && !userHasRole("admin")) {
         window.location.hash = "#overview";
     }
 }
@@ -877,7 +881,7 @@ async function handleLogout() {
 }
 
 function handleAdminPanelClick() {
-    window.location.hash = "#logs";
+    window.location.hash = "#admin";
 }
 
 function populateSelectOptions(items) {
@@ -1144,6 +1148,44 @@ function renderLogs(logs) {
     overviewLogs.innerHTML = logs.slice(0, 4).map((log) => renderLogEntry(log)).join("");
 }
 
+function renderUsers(users) {
+    if (!userHasRole("admin")) {
+        usersTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">Users are available only for admins.</td></tr>';
+        return;
+    }
+
+    if (users.length === 0) {
+        usersTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No users found</td></tr>';
+        return;
+    }
+
+    usersTableBody.innerHTML = "";
+
+    users.forEach((user) => {
+        const row = document.createElement("tr");
+        const roleOptions = ["user", "workshop", "admin"]
+            .map((role) => `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`)
+            .join("");
+        const removeDisabled = user.is_superadmin || user.id === state.user?.id ? "disabled" : "";
+        const roleDisabled = user.is_superadmin ? "disabled" : "";
+
+        row.innerHTML = `
+            <td>${user.email}${user.is_superadmin ? " (superadmin)" : ""}</td>
+            <td>
+                <select class="user-role-select" data-user-id="${user.id}" ${roleDisabled}>
+                    ${roleOptions}
+                </select>
+            </td>
+            <td>${formatIstDateTime(user.created_at) || "-"}</td>
+            <td>${formatIstDateTime(user.updated_at) || "-"}</td>
+            <td data-align="center">
+                <button class="danger-button remove-user-button" type="button" data-user-id="${user.id}" ${removeDisabled}>Remove</button>
+            </td>
+        `;
+        usersTableBody.appendChild(row);
+    });
+}
+
 async function loadInventory() {
     if (!state.user) {
         return;
@@ -1188,6 +1230,25 @@ async function loadLogs() {
     } catch (error) {
         logsList.innerHTML = `<p class="empty-state">${error.message}</p>`;
         overviewLogs.innerHTML = `<p class="empty-state">${error.message}</p>`;
+    }
+}
+
+async function loadUsers() {
+    if (!userHasRole("admin")) {
+        state.users = [];
+        renderUsers([]);
+        return;
+    }
+
+    try {
+        const users = await request("/admin/users");
+        state.users = Array.isArray(users) ? users : [];
+        renderUsers(state.users);
+        setMessage(adminUsersMessage, `${state.users.length} user(s) found`);
+    } catch (error) {
+        state.users = [];
+        renderUsers([]);
+        setMessage(adminUsersMessage, error.message, "error");
     }
 }
 
@@ -1479,6 +1540,60 @@ async function handleTableClick(event) {
     }
 }
 
+async function handleUsersTableChange(event) {
+    const select = event.target.closest(".user-role-select");
+    if (!select) {
+        return;
+    }
+
+    const userId = select.dataset.userId;
+    const nextRole = select.value;
+    const targetUser = state.users.find((user) => user.id === userId);
+    if (!targetUser) {
+        return;
+    }
+
+    try {
+        await request(`/admin/users/${userId}/role`, {
+            method: "PUT",
+            body: JSON.stringify({ role: nextRole }),
+        });
+        setMessage(adminUsersMessage, `Updated role for ${targetUser.email}`, "success");
+        await loadUsers();
+    } catch (error) {
+        select.value = targetUser.role;
+        setMessage(adminUsersMessage, error.message, "error");
+    }
+}
+
+async function handleUsersTableClick(event) {
+    const button = event.target.closest(".remove-user-button");
+    if (!button) {
+        return;
+    }
+
+    const userId = button.dataset.userId;
+    const targetUser = state.users.find((user) => user.id === userId);
+    if (!targetUser) {
+        return;
+    }
+
+    const confirmed = window.confirm(`Remove ${targetUser.email}?`);
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await request(`/admin/users/${userId}`, {
+            method: "DELETE",
+        });
+        setMessage(adminUsersMessage, `Removed ${targetUser.email}`, "success");
+        await loadUsers();
+    } catch (error) {
+        setMessage(adminUsersMessage, error.message, "error");
+    }
+}
+
 function debounce(callback, delay = 300) {
     let timeoutId;
     return (...args) => {
@@ -1493,7 +1608,7 @@ async function initializeAppData() {
     if (!state.user) {
         return;
     }
-    await Promise.all([loadInventory(), loadLogs()]);
+    await Promise.all([loadInventory(), loadLogs(), loadUsers()]);
 }
 
 window.addEventListener("hashchange", () => {
@@ -1505,7 +1620,7 @@ window.addEventListener("hashchange", () => {
         window.location.hash = "#overview";
         return;
     }
-    if (page === "logs" && !userHasRole("admin")) {
+    if (page === "admin" && !userHasRole("admin")) {
         window.location.hash = "#overview";
         return;
     }
@@ -1533,6 +1648,8 @@ adminPanelButton.addEventListener("click", handleAdminPanelClick);
 importTemplateButton.addEventListener("click", handleImportTemplateDownload);
 excelExportButton.addEventListener("click", handleUpdateSheetDownload);
 inventoryTableBody.addEventListener("click", handleTableClick);
+usersTableBody.addEventListener("change", handleUsersTableChange);
+usersTableBody.addEventListener("click", handleUsersTableClick);
 searchInput.addEventListener("input", debouncedLoadInventory);
 categoryFilter.addEventListener("change", loadInventory);
 brandFilter.addEventListener("change", loadInventory);

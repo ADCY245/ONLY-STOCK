@@ -98,9 +98,9 @@
                     <span class="nav-title">Excel Tools</span>
                     <span class="nav-copy">Import and update inventory</span>
                 </a>
-                <a class="nav-link" href="#logs" data-page-link="logs" data-min-role="admin">
-                    <span class="nav-title">Stock Logs</span>
-                    <span class="nav-copy">Track recent stock changes</span>
+                <a class="nav-link" href="#admin" data-page-link="admin" data-min-role="admin">
+                    <span class="nav-title">Admin Panel</span>
+                    <span class="nav-copy">Manage users and review stock logs</span>
                 </a>
             </nav>
 
@@ -373,7 +373,36 @@
                 </section>
             </section>
 
-            <section class="page" data-page="logs" data-min-role="admin">
+            <section class="page" data-page="admin" data-min-role="admin">
+                <section class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <h3>Users</h3>
+                            <p>Manage roles and remove users from the system.</p>
+                        </div>
+                        <p id="adminUsersMessage" class="message"></p>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Created</th>
+                                    <th>Updated</th>
+                                    <th data-align="center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr>
+                                    <td colspan="5" class="empty-state">No users found</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <section class="panel">
                     <div class="section-heading">
                         <div>
