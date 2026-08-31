@@ -1,12 +1,37 @@
 import os
+from pathlib import Path
 
 from pymongo import MongoClient
 from pymongo.uri_parser import parse_uri
 
 
 DEFAULT_MONGODB_URI = "mongodb://localhost:27017/inventory_app"
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 _client = None
 _database = None
+
+
+def _load_local_env():
+    """Load simple KEY=VALUE settings without overriding real environment variables."""
+    try:
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"\"", "'"}:
+            value = value[1:-1]
+        if key:
+            os.environ.setdefault(key, value)
+
+
+_load_local_env()
 
 
 def get_mongodb_uri():
@@ -46,7 +71,10 @@ def get_inventory_collection():
     for index_name, index_info in collection.index_information().items():
         if index_name == "_id_":
             continue
-        if index_info.get("key") == legacy_key and index_info.get("unique"):
+        if (
+            index_name in {"inventory_item_identity_v2", "inventory_item_identity_v3"}
+            or (index_info.get("key") == legacy_key and index_info.get("unique"))
+        ):
             collection.drop_index(index_name)
     collection.create_index(
         [
@@ -57,9 +85,17 @@ def get_inventory_collection():
             ("width", 1),
             ("height", 1),
             ("thickness", 1),
+            ("blanket_name", 1),
+            ("nominal_width", 1),
+            ("actual_width", 1),
+            ("length_meters", 1),
+            ("roll_no", 1),
+            ("batch_no", 1),
+            ("print_type", 1),
+            ("storage_type", 1),
         ],
         unique=True,
-        name="inventory_item_identity_v2",
+        name="inventory_item_identity_v4",
     )
     return collection
 

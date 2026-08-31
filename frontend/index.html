@@ -3,8 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Only Stock</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b1324'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-size='28' fill='white'%3EOS%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="warehouse.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
     <section id="authShell" class="auth-shell">
@@ -94,9 +107,17 @@
                     <span class="nav-title">Inventory</span>
                     <span class="nav-copy">Search, update, and delete stock</span>
                 </a>
+                <a class="nav-link" href="#warehouse" data-page-link="warehouse">
+                    <span class="nav-title">Warehouse</span>
+                    <span class="nav-copy">3D warehouse view and stock locations</span>
+                </a>
                 <a class="nav-link" href="#excel" data-page-link="excel" data-min-role="workshop">
                     <span class="nav-title">Excel Tools</span>
                     <span class="nav-copy">Import and update inventory</span>
+                </a>
+                <a class="nav-link" href="#inventory-adjustments" data-page-link="inventory-adjustments" data-min-role="workshop">
+                    <span class="nav-title">Inventory Adjustments</span>
+                    <span class="nav-copy">Create adjustment XLS files</span>
                 </a>
                 <a class="nav-link" href="#admin" data-page-link="admin" data-min-role="admin">
                     <span class="nav-title">Admin Panel</span>
@@ -200,48 +221,13 @@
                     </div>
 
                     <form id="itemForm" class="item-form" novalidate>
-                        <label>
+                        <label class="category-selector-field">
                             Category
                             <select id="formCategorySelect" name="category" required>
                                 <option value="">Select category</option>
                             </select>
                         </label>
-                        <label>
-                            Brand
-                            <input type="text" name="brand" placeholder="Day" required>
-                        </label>
-                        <label>
-                            Type
-                            <input type="text" name="type" placeholder="UV" required>
-                        </label>
-                        <label>
-                            Unit
-                            <select id="formUnitSelect" name="unit" required>
-                                <option value="">Select unit</option>
-                            </select>
-                        </label>
-                        <label>
-                            Batch / Roll No.
-                            <input id="formBatchRollNoInput" type="text" name="batch_roll_no" placeholder="BR-001">
-                        </label>
-                        <label>
-                            Width
-                            <input id="formWidthInput" type="text" name="width" placeholder="1040">
-                        </label>
-                        <label>
-                            <span id="lengthLabelText">Length</span>
-                            <input id="formHeightInput" type="text" name="height" placeholder="920">
-                        </label>
-                        <label>
-                            Thickness
-                            <input id="formThicknessInput" type="text" name="thickness" placeholder="1.95">
-                            <small id="thicknessHint" class="field-hint">Use thickness where applicable.</small>
-                        </label>
-                        <label id="quantityLabel">
-                            Quantity
-                            <input id="formQuantityInput" type="number" name="quantity" min="0" step="1" placeholder="10" required>
-                            <small id="quantityHint" class="field-hint">Use the item's stock unit.</small>
-                        </label>
+                        <div id="dynamicItemFields" class="dynamic-item-fields" aria-live="polite"></div>
                         <div class="form-actions">
                             <button class="primary-button" type="submit">Add Item</button>
                         </div>
@@ -307,7 +293,7 @@
 
                     <div class="table-wrap">
                         <table>
-                            <thead>
+                            <thead id="inventoryTableHead">
                                 <tr>
                                     <th>Category</th>
                                     <th>Brand</th>
@@ -332,46 +318,394 @@
                 </section>
             </section>
 
+            <section class="page" data-page="warehouse">
+                <section class="panel warehouse-panel">
+                    <div class="warehouse-searchbar">
+                        <label class="warehouse-search-field" for="warehouseSearchInput">
+                            <span>Search Inventory</span>
+                            <input id="warehouseSearchInput" type="search" list="warehouseSearchOptions" placeholder="Item, category, brand, type, roll or batch number">
+                            <datalist id="warehouseSearchOptions"></datalist>
+                        </label>
+                        <button id="warehouseLocateButton" class="primary-button warehouse-locate-button" type="button">Locate Item</button>
+                    </div>
+                    <p id="warehouseMessage" class="message warehouse-message" aria-live="polite"></p>
+
+                    <div class="warehouse-view-actions" role="group" aria-label="Warehouse view controls">
+                        <button class="secondary-button" id="warehouse3dButton" type="button" aria-pressed="true">3D View</button>
+                        <button class="secondary-button" id="warehouseTopButton" type="button" aria-pressed="false">2D Top View</button>
+                        <button class="secondary-button" id="warehouseResetButton" type="button">Reset View</button>
+                        <button class="secondary-button" id="warehouseShowAllButton" type="button">Show All</button>
+                    </div>
+
+                    <div class="warehouse-workspace">
+                        <div class="warehouse-viewport-card">
+                            <div id="warehouse3dViewport" class="warehouse-viewport is-active" aria-label="Interactive 3D warehouse">
+                                <div id="warehouseCanvasHost" class="warehouse-canvas-host">
+                                    <div id="warehouseLoading" class="warehouse-loading">Loading the PDF-derived warehouse model...</div>
+                                </div>
+                            </div>
+                            <div id="warehouseTopViewport" class="warehouse-viewport warehouse-top-viewport" aria-label="Interactive 2D warehouse top view">
+                                <svg id="warehouseTopSvg" viewBox="-20 -12 40 29" role="img" aria-label="PDF-derived warehouse plan"></svg>
+                            </div>
+                            <div class="warehouse-zoom-controls" aria-label="Zoom controls">
+                                <button id="warehouseZoomIn" type="button" aria-label="Zoom in">+</button>
+                                <button id="warehouseZoomOut" type="button" aria-label="Zoom out">−</button>
+                                <button id="warehouseViewportReset" type="button" aria-label="Reset warehouse camera">Reset</button>
+                            </div>
+                            <div class="warehouse-plan-caption">
+                                <span>PDF plan: south, north, and east rack elevations</span>
+                                <span id="warehouseViewStatus">Complete warehouse · 3D isometric</span>
+                            </div>
+                        </div>
+
+                        <aside id="warehouseDetailsPanel" class="warehouse-details-panel" aria-live="polite">
+                            <div class="warehouse-details-heading">
+                                <div>
+                                    <p class="eyebrow">Selection</p>
+                                    <h3>Location Details</h3>
+                                </div>
+                                <span id="warehouseLocationBadge" class="warehouse-location-badge">No selection</span>
+                            </div>
+                            <div id="warehouseDetailsContent" class="warehouse-details-content">
+                                <div class="warehouse-empty-details">
+                                    <strong>Select a rack, shelf, or inventory item</strong>
+                                    <p>The model uses the rack arrangement and category levels shown across all three PDF pages.</p>
+                                </div>
+                            </div>
+                            <div class="warehouse-detail-actions">
+                                <button id="warehouseStockDetailsButton" class="secondary-button" type="button" disabled>View Stock Details</button>
+                                <button id="warehouseLocateAgainButton" class="primary-button" type="button" disabled>Locate Again</button>
+                            </div>
+                            <div class="warehouse-mini-map-wrap">
+                                <div class="warehouse-mini-map-heading">
+                                    <strong>Plan map</strong>
+                                    <span>Entrance at lower right</span>
+                                </div>
+                                <svg id="warehouseMiniMap" viewBox="-20 -12 40 29" role="img" aria-label="Warehouse mini map"></svg>
+                            </div>
+                        </aside>
+                    </div>
+
+                    <section class="warehouse-legend-section" aria-labelledby="warehouseLegendTitle">
+                        <div>
+                            <h4 id="warehouseLegendTitle">Storage Legend</h4>
+                            <p>Colors follow the storage categories identified in the PDF rack elevations.</p>
+                        </div>
+                        <div id="warehouseLegend" class="warehouse-legend"></div>
+                    </section>
+
+                    <section class="warehouse-navigation" aria-labelledby="warehouseNavigationTitle">
+                        <div class="warehouse-navigation-heading">
+                            <h4 id="warehouseNavigationTitle">Warehouse Navigation</h4>
+                            <p>Choose a zone or exact configurable storage position.</p>
+                        </div>
+                        <div class="warehouse-navigation-grid">
+                            <label>Warehouse<select id="warehouseSelect"><option value="WH-A">Warehouse A</option></select></label>
+                            <label>Zone<select id="warehouseZoneSelect"><option value="">All zones</option></select></label>
+                            <label>Rack<select id="warehouseRackSelect"><option value="">Select rack</option></select></label>
+                            <label>Level<select id="warehouseLevelSelect"><option value="">Select level</option></select></label>
+                            <label>Position<select id="warehousePositionSelect"><option value="">Select position</option></select></label>
+                        </div>
+                        <p class="warehouse-source-note">The drawing provides relative arrangement, not surveyed dimensions. Proportions and rack heights are centralized in <code>warehouse.js</code> for later calibration.</p>
+                    </section>
+                </section>
+            </section>
+
             <section class="page" data-page="excel" data-min-role="workshop">
-                <section class="panel">
+                <section class="panel excel-tools-panel">
                     <div class="section-heading">
                         <div>
                             <h3>Excel Tools</h3>
-                            <p>Use one sheet for new items and another for current-stock updates.</p>
+                            <p>Import, update, and export inventory using category-specific Excel workbooks.</p>
                         </div>
                         <p id="excelMessage" class="message"></p>
                     </div>
 
+                    <section class="excel-workflow-section">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">1</span>
+                                <div>
+                                    <h4>Download Templates</h4>
+                                    <p>Download category-specific workbooks for importing or reviewing current stock.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="excel-download-grid">
+                            <article class="excel-download-card excel-download-card--green">
+                                <span class="excel-file-icon" aria-hidden="true">XLSX</span>
+                                <div>
+                                    <h5>Import Template</h5>
+                                    <p>Blank workbook with a dedicated sheet and controlled fields for every category.</p>
+                                    <button id="importTemplateButton" class="primary-button" type="button">Download Import Template</button>
+                                </div>
+                            </article>
+                            <article class="excel-download-card excel-download-card--blue">
+                                <span class="excel-file-icon" aria-hidden="true">XLSX</span>
+                                <div>
+                                    <h5>Current Stock Workbook</h5>
+                                    <p>Download a readable workbook with current inventory organized by category.</p>
+                                    <button id="currentStockButton" class="primary-button" type="button">Download Current Stock</button>
+                                </div>
+                            </article>
+                        </div>
+                        <div class="excel-info-strip">
+                            <span aria-hidden="true">i</span>
+                            <p>One workbook contains separate tabs for Rubber Blankets, Calibrated Underpacking Paper, Creasing Matrix, Chemical, and CTCP Plates.</p>
+                        </div>
+                    </section>
+
+                    <section class="excel-workflow-section">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">2</span>
+                                <div>
+                                    <h4>Import / Update Inventory</h4>
+                                    <p>Upload first to parse and validate. No inventory changes happen during preview.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <form id="excelForm" class="excel-workbook-form">
+                            <fieldset class="excel-operation-fieldset">
+                                <legend>Operation</legend>
+                                <label class="excel-operation-option">
+                                    <input type="radio" name="excelMode" value="import" checked>
+                                    <span>
+                                        <strong>Add / Import Inventory</strong>
+                                        <small>Add new items or update matching inventory records.</small>
+                                    </span>
+                                </label>
+                                <label class="excel-operation-option excel-operation-option--danger">
+                                    <input type="radio" name="excelMode" value="update">
+                                    <span>
+                                        <strong>Update Existing Inventory</strong>
+                                        <small>Provided non-empty category sheets are treated as complete.</small>
+                                    </span>
+                                </label>
+                                <div id="excelUpdateWarning" class="excel-warning-card is-hidden">
+                                    <strong>Update can delete records.</strong>
+                                    <p>Records missing from the provided non-empty category sheets may be deleted. Omitted and empty category sheets are not deletion scopes.</p>
+                                </div>
+                            </fieldset>
+                            <div class="excel-file-field">
+                                <label for="excelFile">Excel Workbook</label>
+                                <input id="excelFile" type="file" accept=".xlsx,.xls" required>
+                                <small>Supported formats: .xlsx and legacy .xls</small>
+                                <button id="excelPreviewButton" class="primary-button" type="submit">Upload &amp; Preview</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section id="excelPreviewSection" class="excel-workflow-section is-hidden">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">3</span>
+                                <div>
+                                    <h4>Workbook Preview</h4>
+                                    <p>Recognized category sheets and populated row counts.</p>
+                                </div>
+                            </div>
+                            <strong id="excelPreviewTotal" class="excel-total-label">0 rows</strong>
+                        </div>
+                        <div id="excelSheetSummary" class="excel-sheet-summary"></div>
+                        <div id="excelWorkbookWarnings" class="excel-workbook-warnings"></div>
+                    </section>
+
+                    <section id="excelValidationSection" class="excel-workflow-section is-hidden">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">4</span>
+                                <div>
+                                    <h4>Validation Summary</h4>
+                                    <p>Resolve every error before importing or updating inventory.</p>
+                                </div>
+                            </div>
+                            <button id="excelErrorsButton" class="secondary-button" type="button">View Errors</button>
+                        </div>
+                        <div class="excel-validation-grid">
+                            <article class="excel-status-card excel-status-card--valid">
+                                <span>Valid Rows</span>
+                                <strong id="excelValidCount">0</strong>
+                            </article>
+                            <article class="excel-status-card excel-status-card--warning">
+                                <span>Warnings</span>
+                                <strong id="excelWarningCount">0</strong>
+                            </article>
+                            <article class="excel-status-card excel-status-card--error">
+                                <span>Rows / Sheets with Errors</span>
+                                <strong id="excelErrorCount">0</strong>
+                            </article>
+                        </div>
+                        <div id="excelErrorsPanel" class="excel-errors-panel is-hidden"></div>
+                    </section>
+
+                    <section id="excelDetailSection" class="excel-workflow-section is-hidden">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">5</span>
+                                <div>
+                                    <h4>Preview by Category</h4>
+                                    <p>Expand a sheet to review its category-specific fields.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="excelCategoryPreview" class="excel-category-preview"></div>
+                    </section>
+
+                    <section id="excelApplySection" class="excel-workflow-section is-hidden">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">6</span>
+                                <div>
+                                    <h4 id="excelApplyTitle">Import Summary</h4>
+                                    <p id="excelApplyDescription">Review the validated changes before applying them.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="excel-update-grid">
+                            <article><span>To Add</span><strong id="excelAddCount">0</strong></article>
+                            <article><span>To Update</span><strong id="excelUpdateCount">0</strong></article>
+                            <article class="excel-delete-summary"><span>To Delete</span><strong id="excelDeleteCount">0</strong></article>
+                            <article><span>Unchanged</span><strong id="excelUnchangedCount">0</strong></article>
+                        </div>
+                        <div id="excelUpdateScope" class="excel-update-scope"></div>
+                        <button id="excelApplyButton" class="primary-button" type="button" disabled>Import Valid Rows</button>
+                    </section>
+
+                    <section class="excel-workflow-section">
+                        <div class="excel-section-heading">
+                            <div>
+                                <span class="excel-step-number">7</span>
+                                <div>
+                                    <h4>Export</h4>
+                                    <p>Download current inventory for reporting or as an editable update workbook.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="excel-download-grid">
+                            <article class="excel-download-card excel-download-card--green">
+                                <span class="excel-file-icon" aria-hidden="true">XLSX</span>
+                                <div>
+                                    <h5>Export Current Inventory</h5>
+                                    <p>Readable category-specific workbook with current normalized stock.</p>
+                                    <button id="exportCurrentButton" class="primary-button" type="button">Export Current Inventory</button>
+                                </div>
+                            </article>
+                            <article class="excel-download-card excel-download-card--blue">
+                                <span class="excel-file-icon" aria-hidden="true">XLSX</span>
+                                <div>
+                                    <h5>Export Update Workbook</h5>
+                                    <p>Editable workbook organized by category for previewed Update mode.</p>
+                                    <button id="excelExportButton" class="primary-button" type="button">Export Update Workbook</button>
+                                </div>
+                            </article>
+                        </div>
+                    </section>
+                </section>
+            </section>
+
+            <section class="page" data-page="inventory-adjustments" data-min-role="workshop">
+                <section class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <h3>Inventory Adjustments</h3>
+                            <p>Paste item blocks or upload an adjustment .xls, then download the formatted workbook.</p>
+                        </div>
+                        <p id="adjustmentsMessage" class="message"></p>
+                    </div>
+
                     <div class="excel-grid">
                         <div class="excel-card">
-                            <h4>Import Items</h4>
-                            <p>Start with a blank sheet and add new stock rows.</p>
-                            <button id="importTemplateButton" class="secondary-button" type="button">Download Import Sheet</button>
+                            <h4>Adjustment Builder</h4>
+                            <p>Add one item header, then enter one or more batches below it.</p>
+                            <div class="adjustment-paste-box">
+                                <label>
+                                    Paste copied Excel rows
+                                    <textarea id="adjustmentsPasteInput" rows="5" placeholder="Paste rows copied from Excel here"></textarea>
+                                </label>
+                                <button id="importPastedAdjustmentsButton" class="secondary-button" type="button">Import Pasted Rows</button>
+                            </div>
+                            <div id="adjustmentItems" class="adjustment-items"></div>
+                            <div class="builder-actions">
+                                <button id="addAdjustmentItemButton" class="secondary-button" type="button">Add New Item</button>
+                                <button id="previewAdjustmentsButton" class="secondary-button" type="button">Preview Output</button>
+                                <button id="generateAdjustmentsButton" class="primary-button" type="submit" form="adjustmentsForm">Generate & Download XLS</button>
+                            </div>
                         </div>
 
                         <div class="excel-card excel-export">
-                            <h4>Update Items</h4>
-                            <p>Download current stock, edit it, add rows, or remove rows.</p>
-                            <button id="excelExportButton" class="primary-button" type="button">Download Update Sheet</button>
+                            <h4>Output Sheet</h4>
+                            <p>The download will be named inventory_adjustments.xls.</p>
+                            <div id="adjustmentsPreview" class="adjustments-preview">
+                                <p class="empty-state">Preview rows will appear here.</p>
+                            </div>
+                            <form id="adjustmentsForm" class="excel-upload-form">
+                                <label>
+                                    Adjustment date
+                                    <input id="adjustmentsDate" type="date">
+                                </label>
+                                <label>
+                                    Reason
+                                    <input id="adjustmentsReason" type="text" value="Stock Update based on 1.04.26" readonly>
+                                </label>
+                            </form>
+                            <form id="adjustmentsUploadForm" class="excel-upload-form">
+                                <label>
+                                    Excel file
+                                    <input id="adjustmentsFile" type="file" accept=".xls">
+                                </label>
+                                <button id="uploadAdjustmentsButton" class="secondary-button" type="submit">Submit Excel</button>
+                            </form>
                         </div>
                     </div>
-
-                    <form id="excelForm" class="excel-upload-form">
-                        <label>
-                            Sheet type
-                            <select id="excelModeSelect">
-                                <option value="import">Import Items</option>
-                                <option value="update">Update Items</option>
-                            </select>
-                        </label>
-                        <label>
-                            Excel file
-                            <input id="excelFile" type="file" accept=".xlsx,.xls" required>
-                        </label>
-                        <button class="secondary-button" type="submit">Upload Excel</button>
-                    </form>
                 </section>
             </section>
+
+            <template id="adjustmentItemTemplate">
+                <section class="adjustment-item">
+                    <div class="adjustment-item-header">
+                        <label>
+                            Item header
+                            <input class="adjustment-item-name" type="text" placeholder="1070mm Image Print Master BL 1.95mm">
+                        </label>
+                        <button class="danger-button remove-item-button" type="button">Remove Item</button>
+                    </div>
+                    <div class="adjustment-batches"></div>
+                    <div class="builder-actions">
+                        <button class="secondary-button add-batch-button" type="button">Add Batch</button>
+                    </div>
+                </section>
+            </template>
+
+            <template id="adjustmentBatchTemplate">
+                <div class="adjustment-batch-row">
+                    <label>
+                        Batch No.
+                        <input class="adjustment-batch-no" type="text" placeholder="R13">
+                    </label>
+                    <label>
+                        Mfg No.
+                        <input class="adjustment-mfg-no" type="text" placeholder="27.50">
+                    </label>
+                    <label>
+                        Size
+                        <input class="adjustment-size" type="text" placeholder="15.55">
+                    </label>
+                    <label>
+                        Unit
+                        <select class="adjustment-batch-unit">
+                            <option value="Mtr">Mtr</option>
+                            <option value="sq.mtr">sq.mtr</option>
+                            <option value="pcs">pcs</option>
+                        </select>
+                    </label>
+                    <label>
+                        Cost per unit
+                        <input class="adjustment-cost" type="text" placeholder="2559.04">
+                    </label>
+                    <button class="danger-button remove-batch-button" type="button">Remove</button>
+                </div>
+            </template>
 
             <section class="page" data-page="admin" data-min-role="admin">
                 <section class="panel">
@@ -464,6 +798,7 @@
         </form>
     </dialog>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=shared-json-catalog-20260831-v2"></script>
+    <script type="module" src="warehouse.js?v=warehouse-view-20260831"></script>
 </body>
 </html>

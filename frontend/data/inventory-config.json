@@ -1,0 +1,145 @@
+{
+  "version": 2,
+  "rubber_blankets": [
+    {
+      "key": "image_sunrise",
+      "name": "Image Sunrise",
+      "aliases": [],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[690, 690], [770, 790]],
+      "print_types": []
+    },
+    {
+      "key": "kp_web_blue",
+      "name": "KP Web Blue 1.95",
+      "aliases": [],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1020, 1020], [920, 950]],
+      "print_types": []
+    },
+    {
+      "key": "kp_uv_black",
+      "name": "KP UV Black 1.95",
+      "aliases": [],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1070, 1070]],
+      "print_types": []
+    },
+    {
+      "key": "magnum_sf",
+      "name": "Magnum SF 1.95",
+      "aliases": ["Magnum SF"],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1070, 1070], [780, 790]],
+      "print_types": []
+    },
+    {
+      "key": "magnum_ez_peel",
+      "name": "Magnum EZ-Peel 1.95",
+      "aliases": ["Magnum EZ Peel 1.95"],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[780, 790]],
+      "print_types": []
+    },
+    {
+      "key": "magnum_uvr_delhi",
+      "name": "Magnum UVR - Delhi",
+      "aliases": ["Magnum UVR Delhi"],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[1050, 1050], [790, 790]],
+      "print_types": []
+    },
+    {
+      "key": "magnum_uvr",
+      "name": "Magnum UVR",
+      "aliases": [],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[1070, 1070], [780, 790], [790, 790]],
+      "print_types": []
+    },
+    {
+      "key": "image_web_master_gr",
+      "name": "Image Web Master GR 1.70",
+      "aliases": [
+        "Image Web Master GR - 1.70",
+        "Image Web Master GR - 1.70 mm",
+        "Image Welt Master GR 1.70",
+        "Image Welt Master GR - 1.70",
+        "Image Welt Master GR - 1.70 mm"
+      ],
+      "thickness_mode": "fixed",
+      "thickness": 1.7,
+      "thickness_options": [1.7],
+      "widths": [[890, 920], [890, 900], [890, 910]],
+      "print_types": ["P", "W/O"]
+    },
+    {
+      "key": "mtech_active_sf",
+      "name": "MTech Active SF",
+      "aliases": ["M Tech Active SF"],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[1070, 1070], [940, 940], [790, 790], [686, 690], [1680, 1680]],
+      "print_types": []
+    },
+    {
+      "key": "sava_uv_black",
+      "name": "SAVA UV Black 1.95",
+      "aliases": [],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1060, 1070], [1080, 1080]],
+      "print_types": []
+    },
+    {
+      "key": "sava_uv_red",
+      "name": "SAVA UVRed 1.95",
+      "aliases": ["SAVA UV Red 1.95"],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1080, 1080]],
+      "print_types": []
+    },
+    {
+      "key": "sava_advantage_plus",
+      "name": "SAVA Advantage Plus 1.95",
+      "aliases": [],
+      "thickness_mode": "fixed",
+      "thickness": 1.95,
+      "thickness_options": [1.95],
+      "widths": [[1560, 1590]],
+      "print_types": []
+    },
+    {
+      "key": "image_print_master_blue",
+      "name": "Image Print Master Blue",
+      "aliases": ["Image Print Machine Blue", "Image Point Master Blue"],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[1480, 1480], [686, 690], [690, 690], [1070, 1070]],
+      "print_types": ["P", "W/O"]
+    },
+    {
+      "key": "image_print_master_green",
+      "name": "Image Print Master Green",
+      "aliases": ["Image Point Master Green", "Image Print Machine Green"],
+      "thickness_mode": "select",
+      "thickness_options": [1.95, 1.7],
+      "widths": [[1030, 1070], [665, 690], [762, 790]],
+      "print_types": ["P", "W/O"]
+    }
+  ]
+}
