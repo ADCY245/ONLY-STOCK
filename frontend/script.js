@@ -14,7 +14,18 @@ const state = {
     user: null,
     users: [],
     excelPreview: null,
+    priceListPreview: null,
+    priceListPage: 1,
+    priceListPageSize: 25,
+    priceListTotal: 0,
+    priceListCustomers: [],
+    priceListCustomerResults: [],
+    priceListCustomerHighlightIndex: 0,
 };
+
+const PRICE_LIST_PAGE_SIZE_OPTIONS = [25, 50, 75, 100];
+const PRICE_LIST_PAGE_SIZE_STORAGE_KEY = "onlystock.priceListPageSize";
+const PRICE_LIST_CUSTOMER_RENDER_LIMIT = 80;
 
 const ROLE_LEVELS = {
     user: 1,
@@ -48,6 +59,11 @@ const PAGE_META = {
         title: "Excel Tools",
         description: "Import, update, and export inventory using category-specific Excel workbooks.",
     },
+    "price-lists": {
+        eyebrow: "Workspace",
+        title: "Price List Exporter",
+        description: "Organize customer-specific prices, search products, and export Excel price lists.",
+    },
     "inventory-adjustments": {
         eyebrow: "Workspace",
         title: "Inventory Adjustments",
@@ -75,6 +91,9 @@ const excelForm = document.getElementById("excelForm");
 const excelFileInput = document.getElementById("excelFile");
 const refreshButton = document.getElementById("refreshButton");
 const adminPanelButton = document.getElementById("adminPanelButton");
+const sidebarToggleButton = document.getElementById("sidebarToggleButton");
+const mobileSidebarToggle = document.getElementById("mobileSidebarToggle");
+const sidebarBackdrop = document.getElementById("sidebarBackdrop");
 const excelExportButton = document.getElementById("excelExportButton");
 const importTemplateButton = document.getElementById("importTemplateButton");
 const currentStockButton = document.getElementById("currentStockButton");
@@ -135,6 +154,44 @@ const statusText = document.getElementById("statusText");
 const formMessage = document.getElementById("formMessage");
 const excelMessage = document.getElementById("excelMessage");
 const adjustmentsMessage = document.getElementById("adjustmentsMessage");
+const priceListForm = document.getElementById("priceListForm");
+const priceListFile = document.getElementById("priceListFile");
+const priceListFileName = document.getElementById("priceListFileName");
+const priceListMapping = document.getElementById("priceListMapping");
+const priceListCustomerColumn = document.getElementById("priceListCustomerColumn");
+const priceListItemColumn = document.getElementById("priceListItemColumn");
+const priceListPriceColumn = document.getElementById("priceListPriceColumn");
+const priceListIdColumn = document.getElementById("priceListIdColumn");
+const priceListRemapButton = document.getElementById("priceListRemapButton");
+const priceListPreview = document.getElementById("priceListPreview");
+const priceListMessage = document.getElementById("priceListMessage");
+const priceListImportButton = document.getElementById("priceListImportButton");
+const priceListCustomerSelect = document.getElementById("priceListCustomerSelect");
+const priceListCustomerCombobox = document.getElementById("priceListCustomerCombobox");
+const priceListCustomerTrigger = document.getElementById("priceListCustomerTrigger");
+const priceListCustomerValue = document.getElementById("priceListCustomerValue");
+const priceListCustomerMenu = document.getElementById("priceListCustomerMenu");
+const priceListCustomerSearch = document.getElementById("priceListCustomerSearch");
+const priceListCustomerClear = document.getElementById("priceListCustomerClear");
+const priceListCustomerMatchCount = document.getElementById("priceListCustomerMatchCount");
+const priceListCustomerOptions = document.getElementById("priceListCustomerOptions");
+const priceListSearch = document.getElementById("priceListSearch");
+const priceListBrandSelect = document.getElementById("priceListBrandSelect");
+const priceListTypeSelect = document.getElementById("priceListTypeSelect");
+const priceListComparisonMode = document.getElementById("priceListComparisonMode");
+const priceListPageSize = document.getElementById("priceListPageSize");
+const priceListSelectedExport = document.getElementById("priceListSelectedExport");
+const priceListAllExport = document.getElementById("priceListAllExport");
+const priceListSearchExport = document.getElementById("priceListSearchExport");
+const priceListRevisionExport = document.getElementById("priceListRevisionExport");
+const priceListTableBody = document.getElementById("priceListTableBody");
+const priceListResultSummary = document.getElementById("priceListResultSummary");
+const priceListPrevious = document.getElementById("priceListPrevious");
+const priceListNext = document.getElementById("priceListNext");
+const priceListHistory = document.getElementById("priceListHistory");
+const priceRevisionDialog = document.getElementById("priceRevisionDialog");
+const priceRevisionEntryLabel = document.getElementById("priceRevisionEntryLabel");
+const priceRevisionTimeline = document.getElementById("priceRevisionTimeline");
 const adminUsersMessage = document.getElementById("adminUsersMessage");
 const pageEyebrow = document.getElementById("pageEyebrow");
 const pageTitle = document.getElementById("pageTitle");
@@ -542,6 +599,67 @@ function isReadOnlyUser() {
     return state.user?.role === "user";
 }
 
+const SIDEBAR_STORAGE_KEY = "onlystock.sidebarCollapsed";
+let mobileSidebarOpen = false;
+
+function isMobileSidebarViewport() {
+    return window.matchMedia("(max-width: 780px)").matches;
+}
+
+function getInitialSidebarCollapsed() {
+    try {
+        const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+        if (stored !== null) {
+            return stored === "true";
+        }
+    } catch (error) {
+        // Ignore storage restrictions and retain the responsive default.
+    }
+    return window.matchMedia("(min-width: 781px) and (max-width: 1180px)").matches;
+}
+
+let sidebarCollapsed = getInitialSidebarCollapsed();
+
+function applySidebarState() {
+    const isMobile = isMobileSidebarViewport();
+    appShell.classList.toggle("is-sidebar-collapsed", sidebarCollapsed);
+    appShell.classList.toggle("is-sidebar-drawer-open", isMobile && mobileSidebarOpen);
+    document.body.classList.toggle("sidebar-drawer-open", isMobile && mobileSidebarOpen);
+
+    if (sidebarToggleButton) {
+        const expanded = isMobile ? mobileSidebarOpen : !sidebarCollapsed;
+        const label = isMobile
+            ? (mobileSidebarOpen ? "Close navigation" : "Open navigation")
+            : (sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar");
+        sidebarToggleButton.setAttribute("aria-expanded", String(expanded));
+        sidebarToggleButton.setAttribute("aria-label", label);
+        sidebarToggleButton.title = label;
+        const accessibleLabel = sidebarToggleButton.querySelector(".visually-hidden");
+        if (accessibleLabel) {
+            accessibleLabel.textContent = label;
+        }
+    }
+
+    if (mobileSidebarToggle) {
+        mobileSidebarToggle.setAttribute("aria-expanded", String(isMobile && mobileSidebarOpen));
+    }
+}
+
+function setSidebarCollapsed(collapsed) {
+    sidebarCollapsed = Boolean(collapsed);
+    try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+    } catch (error) {
+        // The sidebar still works for the current session if storage is unavailable.
+    }
+    applySidebarState();
+}
+
+function setMobileSidebarOpen(open) {
+    mobileSidebarOpen = Boolean(open);
+    applySidebarState();
+}
+
 function setAuthTab(tabName) {
     authTabs.forEach((tab) => {
         tab.classList.toggle("is-active", tab.dataset.authTab === tabName);
@@ -578,6 +696,8 @@ function setAuthenticatedUser(user) {
     updateRoleVisibility();
 
     if (!isLoggedIn) {
+        mobileSidebarOpen = false;
+        applySidebarState();
         state.inventory = [];
         state.logs = [];
         state.users = [];
@@ -586,7 +706,7 @@ function setAuthenticatedUser(user) {
     }
 
     const page = getCurrentPage();
-    if ((page === "add-item" || page === "excel" || page === "inventory-adjustments") && !userHasRole("workshop")) {
+    if ((page === "add-item" || page === "excel" || page === "price-lists" || page === "inventory-adjustments") && !userHasRole("workshop")) {
         window.location.hash = "#overview";
     }
     if (page === "admin" && !userHasRole("admin")) {
@@ -1878,6 +1998,411 @@ function getLogDetailsMarkup(details) {
 function getLogItemPreview(log) {
     return joinPathParts([log.category, log.brand, log.type, log.batch_roll_no, log.size]) || "item";
 }
+
+function priceListEscape(value) {
+    return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+    }[character]));
+}
+
+function getStoredPriceListPageSize() {
+    try {
+        const stored = Number(window.localStorage.getItem(PRICE_LIST_PAGE_SIZE_STORAGE_KEY));
+        return PRICE_LIST_PAGE_SIZE_OPTIONS.includes(stored) ? stored : 25;
+    } catch (error) {
+        return 25;
+    }
+}
+
+function setStoredPriceListPageSize(value) {
+    try {
+        window.localStorage.setItem(PRICE_LIST_PAGE_SIZE_STORAGE_KEY, String(value));
+    } catch (error) {
+        // Keep the current selection for this session when storage is unavailable.
+    }
+}
+
+function highlightPriceListCustomerName(name, query) {
+    const customerName = String(name ?? "");
+    const normalizedName = customerName.toLocaleLowerCase();
+    const normalizedQuery = String(query ?? "").toLocaleLowerCase();
+    if (!normalizedQuery) return priceListEscape(customerName);
+    const matchIndex = normalizedName.indexOf(normalizedQuery);
+    if (matchIndex < 0) return priceListEscape(customerName);
+    const matchEnd = matchIndex + normalizedQuery.length;
+    return `${priceListEscape(customerName.slice(0, matchIndex))}<mark>${priceListEscape(customerName.slice(matchIndex, matchEnd))}</mark>${priceListEscape(customerName.slice(matchEnd))}`;
+}
+
+function updatePriceListCustomerTrigger() {
+    if (!priceListCustomerValue) return;
+    const selectedName = priceListCustomerSelect?.value || "";
+    const selectedCustomer = state.priceListCustomers.find((item) => item.name === selectedName);
+    priceListCustomerValue.textContent = selectedCustomer?.name || "All Customers";
+}
+
+function renderPriceListCustomerOptions() {
+    if (!priceListCustomerOptions) return;
+    const query = priceListCustomerSearch?.value.trim() || "";
+    const normalizedQuery = query.toLocaleLowerCase();
+    const matchingCustomers = state.priceListCustomers.filter((item) => item.name.toLocaleLowerCase().includes(normalizedQuery));
+    state.priceListCustomerResults = matchingCustomers;
+    const visibleCustomers = matchingCustomers.slice(0, PRICE_LIST_CUSTOMER_RENDER_LIMIT);
+    const optionCount = matchingCustomers.length === 1 ? "customer" : "customers";
+    if (priceListCustomerMatchCount) {
+        priceListCustomerMatchCount.textContent = `${formatQuantity(matchingCustomers.length)} ${optionCount}${matchingCustomers.length > visibleCustomers.length ? ` · showing first ${PRICE_LIST_CUSTOMER_RENDER_LIMIT}` : ""}`;
+    }
+
+    const allCustomersOption = `
+        <button class="price-list-customer-option ${state.priceListCustomerHighlightIndex === 0 ? "is-highlighted" : ""}" type="button" role="option" data-customer-value="" aria-selected="${priceListCustomerSelect?.value === ""}">
+            <span class="price-list-customer-option-name">All Customers</span>
+            <span class="price-list-customer-option-count">Compare all</span>
+        </button>`;
+    if (!matchingCustomers.length) {
+        priceListCustomerOptions.innerHTML = `${allCustomersOption}<div class="price-list-customer-empty">No customers found</div>`;
+        return;
+    }
+
+    const customerOptions = visibleCustomers.map((item, index) => {
+        const optionIndex = index + 1;
+        return `
+            <button class="price-list-customer-option ${state.priceListCustomerHighlightIndex === optionIndex ? "is-highlighted" : ""}" type="button" role="option" data-customer-value="${priceListEscape(item.name)}" aria-selected="${item.name === priceListCustomerSelect?.value}">
+                <span class="price-list-customer-option-name">${highlightPriceListCustomerName(item.name, query)}</span>
+                <span class="price-list-customer-option-count">${formatQuantity(item.count || 0)}</span>
+            </button>`;
+    }).join("");
+    priceListCustomerOptions.innerHTML = `${allCustomersOption}${customerOptions}`;
+}
+
+function openPriceListCustomerDropdown() {
+    if (!priceListCustomerMenu || !priceListCustomerCombobox) return;
+    priceListCustomerMenu.hidden = false;
+    priceListCustomerCombobox.classList.add("is-open");
+    priceListCustomerTrigger?.setAttribute("aria-expanded", "true");
+    renderPriceListCustomerOptions();
+    window.requestAnimationFrame(() => priceListCustomerSearch?.focus());
+}
+
+function closePriceListCustomerDropdown({ restoreFocus = false } = {}) {
+    if (!priceListCustomerMenu || !priceListCustomerCombobox) return;
+    priceListCustomerMenu.hidden = true;
+    priceListCustomerCombobox.classList.remove("is-open");
+    priceListCustomerTrigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus) priceListCustomerTrigger?.focus();
+}
+
+function selectPriceListCustomer(customerName) {
+    if (priceListCustomerSelect) priceListCustomerSelect.value = customerName || "";
+    state.priceListPage = 1;
+    state.priceListCustomerHighlightIndex = 0;
+    if (priceListCustomerSearch) priceListCustomerSearch.value = "";
+    updatePriceListCustomerTrigger();
+    closePriceListCustomerDropdown({ restoreFocus: true });
+    loadPriceListEntries();
+}
+
+function movePriceListCustomerHighlight(direction) {
+    const maxIndex = Math.min(state.priceListCustomerResults.length, PRICE_LIST_CUSTOMER_RENDER_LIMIT) + 1;
+    state.priceListCustomerHighlightIndex = Math.min(
+        maxIndex - 1,
+        Math.max(0, state.priceListCustomerHighlightIndex + direction),
+    );
+    renderPriceListCustomerOptions();
+}
+
+function priceListMappingPayload() {
+    return {
+        price_list_id: priceListIdColumn?.value || null,
+        customer_name: priceListCustomerColumn?.value || null,
+        item_name: priceListItemColumn?.value || null,
+        price: priceListPriceColumn?.value || null,
+    };
+}
+
+function formatPriceListPrice(value) {
+    return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function populatePriceListColumnSelect(select, headers, selected, optional = false) {
+    if (!select) return;
+    select.innerHTML = `${optional ? '<option value="">Not mapped</option>' : ""}${headers.map((header) => `<option value="${priceListEscape(header)}">${priceListEscape(header)}</option>`).join("")}`;
+    if (selected && headers.includes(selected)) select.value = selected;
+}
+
+function renderPriceListMapping(preview) {
+    const headers = preview.headers || [];
+    populatePriceListColumnSelect(priceListCustomerColumn, headers, preview.mapping?.customer_name);
+    populatePriceListColumnSelect(priceListItemColumn, headers, preview.mapping?.item_name);
+    populatePriceListColumnSelect(priceListPriceColumn, headers, preview.mapping?.price);
+    populatePriceListColumnSelect(priceListIdColumn, headers, preview.mapping?.price_list_id, true);
+    priceListMapping?.classList.remove("is-hidden");
+}
+
+function renderPriceListPreview(preview) {
+    const stats = preview.stats || {};
+    const setValue = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = formatQuantity(value || 0); };
+    setValue("priceListTotalCount", stats.total_records);
+    setValue("priceListCustomerCount", stats.unique_customers);
+    setValue("priceListProductCount", stats.unique_products);
+    setValue("priceListInvalidCount", stats.invalid_records);
+    setValue("priceListDuplicateCount", stats.duplicate_records);
+    setValue("priceListSuccessCount", stats.successful_import_count);
+    const filename = document.getElementById("priceListPreviewFilename");
+    const description = document.getElementById("priceListPreviewDescription");
+    if (filename) filename.textContent = preview.filename || "";
+    if (description) description.textContent = `${stats.successful_import_count || 0} validated unique records are ready. Invalid and duplicate rows remain listed for review.`;
+    if (priceListDiagnostics) {
+        const invalid = (preview.invalid_records || []).slice(0, 8).map((item) => `<li>Row ${item.row}: ${priceListEscape((item.reasons || []).join(", "))}</li>`).join("");
+        const duplicates = (preview.duplicate_records || []).slice(0, 8).map((item) => `<li>Row ${item.row}: ${priceListEscape(item.item)}</li>`).join("");
+        priceListDiagnostics.innerHTML = `${invalid ? `<details open><summary>Invalid or incomplete rows (${stats.invalid_records})</summary><ul>${invalid}</ul></details>` : ""}${duplicates ? `<details><summary>Duplicate rows (${stats.duplicate_records})</summary><ul>${duplicates}</ul></details>` : ""}`;
+    }
+    priceListPreview?.classList.remove("is-hidden");
+    if (priceListImportButton) priceListImportButton.disabled = !preview.can_import;
+}
+
+async function previewPriceList(event) {
+    event?.preventDefault();
+    if (!priceListFile?.files?.[0]) {
+        setMessage(priceListMessage, "Choose a CSV, XLSX, or XLS file first", "error");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("file", priceListFile.files[0]);
+    formData.append("mapping", JSON.stringify(priceListMappingPayload()));
+    try {
+        setMessage(priceListMessage, "Reading the master price list…");
+        const preview = await request("/price-lists/preview", { method: "POST", body: formData });
+        state.priceListPreview = preview;
+        renderPriceListMapping(preview);
+        renderPriceListPreview(preview);
+        setMessage(priceListMessage, "Preview ready. Review the diagnostics before importing.", "success");
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function importPriceList(replaceExisting = false) {
+    if (!state.priceListPreview || !priceListFile?.files?.[0]) return;
+    const formData = new FormData();
+    formData.append("file", priceListFile.files[0]);
+    formData.append("mapping", JSON.stringify(priceListMappingPayload()));
+    formData.append("replace_existing", replaceExisting ? "true" : "false");
+    try {
+        setMessage(priceListMessage, "Importing validated price records…");
+        const result = await request("/price-lists/import", { method: "POST", body: formData });
+        setMessage(priceListMessage, `${result.stats.successful_import_count} records imported successfully.`, "success");
+        await loadPriceListWorkspace();
+    } catch (error) {
+        if (error.status === 409 && window.confirm("A master price list already exists. Replace the current master dataset with this previewed file?")) {
+            await importPriceList(true);
+            return;
+        }
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+function priceListFilterParams() {
+    const params = new URLSearchParams({
+        page: String(state.priceListPage || 1),
+        page_size: String(state.priceListPageSize || 25),
+    });
+    if (priceListCustomerSelect?.value) params.set("customer", priceListCustomerSelect.value);
+    if (priceListSearch?.value.trim()) params.set("search", priceListSearch.value.trim());
+    if (priceListBrandSelect?.value) params.set("brand", priceListBrandSelect.value);
+    if (priceListTypeSelect?.value) params.set("product_type", priceListTypeSelect.value);
+    return params;
+}
+
+function populatePriceListOptions(data) {
+    const selectedCustomer = priceListCustomerSelect?.value || "";
+    const customers = data.customers || [];
+    state.priceListCustomers = customers;
+    if (priceListCustomerSelect) {
+        priceListCustomerSelect.value = customers.some((item) => item.name === selectedCustomer) ? selectedCustomer : "";
+    }
+    updatePriceListCustomerTrigger();
+    renderPriceListCustomerOptions();
+    const setOptions = (select, values, emptyLabel) => {
+        const selected = select?.value || "";
+        if (!select) return;
+        select.innerHTML = `<option value="">${emptyLabel}</option>${(values || []).map((value) => `<option value="${priceListEscape(value)}">${priceListEscape(value)}</option>`).join("")}`;
+        if ((values || []).includes(selected)) select.value = selected;
+    };
+    setOptions(priceListBrandSelect, data.brands, "All brands");
+    setOptions(priceListTypeSelect, data.product_types, "All product types");
+}
+
+async function loadPriceListWorkspace() {
+    if (!state.user || !priceListForm) return;
+    try {
+        const [options, history] = await Promise.all([request("/price-lists/customers"), request("/price-lists/history")]);
+        populatePriceListOptions(options);
+        const historyItems = history.imports || [];
+        if (priceListHistory) {
+            priceListHistory.innerHTML = historyItems.length ? historyItems.map((item) => `<article><div><strong>${priceListEscape(item.filename)}</strong><span>${formatIstDateTime(item.created_at)} IST</span></div><span>${formatQuantity(item.stats?.successful_import_count || 0)} records · ${formatQuantity(item.stats?.unique_customers || 0)} customers${item.active ? " · Active" : ""}</span></article>`).join("") : '<p class="empty-state">No imports yet.</p>';
+        }
+        await loadPriceListEntries();
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function loadPriceListEntries() {
+    if (!priceListTableBody || !state.user) return;
+    try {
+        const data = await request(`/price-lists/entries?${priceListFilterParams().toString()}`);
+        const entries = data.entries || [];
+        const comparisonMode = priceListComparisonMode?.value || "updated";
+        const canEdit = userHasRole("workshop");
+        priceListTableBody.innerHTML = entries.length ? entries.map((entry) => `
+            <tr data-price-entry-id="${priceListEscape(entry.entry_id)}">
+                <td>${priceListEscape(entry.customer_name)}</td>
+                <td>${priceListEscape(entry.size_code || "-")}</td>
+                <td class="price-list-description-cell">${priceListEscape(entry.original_item_description)}</td>
+                <td data-align="right" class="price-list-original-price ${comparisonMode === "original" ? "is-selected" : ""}">${formatPriceListPrice(entry.original_price)}</td>
+                <td data-align="right" class="price-list-updated-price ${comparisonMode === "updated" ? "is-selected" : ""}"><span data-updated-price>${formatPriceListPrice(entry.updated_price)}</span>${canEdit ? `<button class="price-list-icon-button price-edit-button" type="button" data-price-action="edit" data-entry-id="${priceListEscape(entry.entry_id)}" aria-label="Edit updated price" title="Edit updated price">✎</button>` : ""}</td>
+                <td data-align="center" class="price-list-row-actions">${canEdit ? `<button class="price-list-icon-button" type="button" data-price-action="history" data-entry-id="${priceListEscape(entry.entry_id)}" aria-label="View price history" title="View price history">↺</button>` : "—"}</td>
+            </tr>
+        `).join("") : '<tr><td colspan="6" class="empty-state">No matching price records.</td></tr>';
+        const total = Number(data.total) || 0;
+        const page = Number(data.page) || 1;
+        const pageSize = Number(data.page_size) || state.priceListPageSize || 25;
+        const firstRecord = total ? ((page - 1) * pageSize) + 1 : 0;
+        const lastRecord = total ? Math.min(page * pageSize, total) : 0;
+        state.priceListPage = page;
+        state.priceListPageSize = pageSize;
+        state.priceListTotal = total;
+        if (priceListPageSize) priceListPageSize.value = String(pageSize);
+        if (priceListResultSummary) {
+            priceListResultSummary.textContent = `Showing ${formatQuantity(firstRecord)}–${formatQuantity(lastRecord)} of ${formatQuantity(total)} records · page ${page}`;
+        }
+        if (priceListPrevious) priceListPrevious.disabled = page <= 1;
+        if (priceListNext) priceListNext.disabled = page * pageSize >= total;
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function showPriceRevisionHistory(entryId) {
+    try {
+        const response = await request(`/price-lists/entries/${encodeURIComponent(entryId)}/history`);
+        const revisions = response.revisions || [];
+        const row = priceListTableBody?.querySelector(`[data-price-entry-id="${CSS.escape(entryId)}"]`);
+        const description = row?.querySelector("td:nth-child(3)")?.textContent || entryId;
+        if (priceRevisionEntryLabel) priceRevisionEntryLabel.textContent = description;
+        if (priceRevisionTimeline) {
+            priceRevisionTimeline.innerHTML = revisions.length ? revisions.map((revision) => `
+                <article class="price-revision-entry">
+                    <div><strong>Revision ${revision.revision_number}</strong><span>${priceListEscape(revision.changed_at || "")} · ${priceListEscape(revision.changed_by || "Unknown user")}</span></div>
+                    <p>${formatPriceListPrice(revision.previous_price)} → ${formatPriceListPrice(revision.new_price)}${revision.restored_from_revision ? ` · restored from revision ${revision.restored_from_revision}` : ""}</p>
+                    <small>${priceListEscape(revision.change_reason || "No reason recorded")}</small>
+                    <button class="secondary-button" type="button" data-price-action="restore" data-entry-id="${priceListEscape(entryId)}" data-revision-number="${revision.revision_number}">Restore this price</button>
+                </article>
+            `).join("") : '<p class="empty-state">No revisions yet. The updated price currently derives from the original price.</p>';
+        }
+        if (priceRevisionDialog?.showModal) priceRevisionDialog.showModal();
+        else priceRevisionDialog?.setAttribute("open", "open");
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function handlePriceListTableAction(event) {
+    const actionButton = event.target.closest("[data-price-action]");
+    if (!actionButton) return;
+    const action = actionButton.dataset.priceAction;
+    const entryId = actionButton.dataset.entryId;
+    const row = actionButton.closest("tr");
+    const updatedCell = row?.querySelector(".price-list-updated-price");
+    if (!entryId || !row || !updatedCell) return;
+    if (action === "history") {
+        await showPriceRevisionHistory(entryId);
+        return;
+    }
+    if (action === "edit") {
+        const current = row.querySelector("[data-updated-price]")?.textContent.replace(/,/g, "") || "0";
+        updatedCell.innerHTML = `<div class="price-list-inline-editor"><input class="price-list-price-input" type="number" min="0" step="0.01" value="${priceListEscape(current)}"><span><button class="primary-button" type="button" data-price-action="save" data-entry-id="${priceListEscape(entryId)}">Save</button><button class="secondary-button" type="button" data-price-action="cancel" data-entry-id="${priceListEscape(entryId)}">Cancel</button></span></div>`;
+        updatedCell.querySelector("input")?.focus();
+        return;
+    }
+    if (action === "cancel") {
+        await loadPriceListEntries();
+        return;
+    }
+    if (action === "save") {
+        const input = updatedCell.querySelector(".price-list-price-input");
+        const value = Number(input?.value);
+        if (!Number.isFinite(value) || value < 0) {
+            setMessage(priceListMessage, "Updated price must be a non-negative number", "error");
+            return;
+        }
+        try {
+            const result = await request(`/price-lists/entries/${encodeURIComponent(entryId)}/price`, {
+                method: "PATCH",
+                body: JSON.stringify({ updated_price: value }),
+            });
+            setMessage(priceListMessage, result.changed ? `Price updated as revision ${result.revision_number}.` : "Price unchanged.", "success");
+            await loadPriceListEntries();
+        } catch (error) {
+            setMessage(priceListMessage, error.message, "error");
+        }
+    }
+}
+
+async function handlePriceRevisionAction(event) {
+    const button = event.target.closest('[data-price-action="restore"]');
+    if (!button) return;
+    const entryId = button.dataset.entryId;
+    const revisionNumber = Number(button.dataset.revisionNumber);
+    if (!window.confirm(`Restore revision ${revisionNumber}? This creates a new revision and preserves history.`)) return;
+    try {
+        const result = await request(`/price-lists/entries/${encodeURIComponent(entryId)}/restore`, {
+            method: "POST",
+            body: JSON.stringify({ revision_number: revisionNumber }),
+        });
+        setMessage(priceListMessage, `Price restored as revision ${result.revision_number}.`, "success");
+        priceRevisionDialog?.close();
+        await loadPriceListEntries();
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function downloadPriceList(mode) {
+    if (mode === "selected" && !priceListCustomerSelect?.value) {
+        setMessage(priceListMessage, "Select a customer before exporting a customer-specific workbook", "error");
+        return;
+    }
+    const params = priceListFilterParams();
+    params.set("mode", mode);
+    if (mode === "all") {
+        params.delete("customer"); params.delete("search"); params.delete("brand"); params.delete("product_type");
+    }
+    try {
+        const blob = await request(`/price-lists/export?${params.toString()}`, { expectBlob: true });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = mode === "all" ? "all_customer_price_lists.xlsx" : mode === "search" ? "price_list_search_results.xlsx" : "customer_price_list.xlsx";
+        link.click(); URL.revokeObjectURL(url);
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+async function downloadPriceRevisionHistory() {
+    try {
+        const blob = await request("/price-lists/revisions/export", { expectBlob: true });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "price_revision_history.xlsx";
+        link.click();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        setMessage(priceListMessage, error.message, "error");
+    }
+}
+
+const priceListDiagnostics = document.getElementById("priceListDiagnostics");
 
 function renderLogEntry(log) {
     const itemPreview = getLogItemPreview(log);
@@ -3985,6 +4510,9 @@ async function initializeAppData() {
         return;
     }
     await Promise.all([loadInventory(), loadLogs(), loadUsers()]);
+    if (getCurrentPage() === "price-lists") {
+        await loadPriceListWorkspace();
+    }
 }
 
 window.addEventListener("hashchange", () => {
@@ -3992,7 +4520,7 @@ window.addEventListener("hashchange", () => {
         return;
     }
     const page = getCurrentPage();
-    if ((page === "add-item" || page === "excel" || page === "inventory-adjustments") && !userHasRole("workshop")) {
+    if ((page === "add-item" || page === "excel" || page === "price-lists" || page === "inventory-adjustments") && !userHasRole("workshop")) {
         window.location.hash = "#overview";
         return;
     }
@@ -4001,6 +4529,9 @@ window.addEventListener("hashchange", () => {
         return;
     }
     showPage(getCurrentPage());
+    if (page === "price-lists") {
+        loadPriceListWorkspace();
+    }
 });
 
 authTabs.forEach((tab) => {
@@ -4080,6 +4611,38 @@ dynamicItemFields.addEventListener("input", (event) => {
     updateSpecializedCalculation();
 });
 logoutButton.addEventListener("click", handleLogout);
+sidebarToggleButton?.addEventListener("click", () => {
+    if (isMobileSidebarViewport()) {
+        setMobileSidebarOpen(!mobileSidebarOpen);
+        return;
+    }
+    setSidebarCollapsed(!sidebarCollapsed);
+});
+mobileSidebarToggle?.addEventListener("click", () => {
+    setMobileSidebarOpen(!mobileSidebarOpen);
+});
+sidebarBackdrop?.addEventListener("click", () => setMobileSidebarOpen(false));
+pageLinks.forEach((link) => {
+    if (link.dataset.tooltip) {
+        link.setAttribute("aria-label", link.dataset.tooltip);
+    }
+    link.addEventListener("click", () => {
+        if (isMobileSidebarViewport()) {
+            setMobileSidebarOpen(false);
+        }
+    });
+});
+window.addEventListener("resize", () => {
+    if (!isMobileSidebarViewport()) {
+        mobileSidebarOpen = false;
+    }
+    applySidebarState();
+});
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && mobileSidebarOpen) {
+        setMobileSidebarOpen(false);
+    }
+});
 refreshButton.addEventListener("click", async () => {
     await initializeAppData();
 });
@@ -4088,6 +4651,86 @@ importTemplateButton.addEventListener("click", handleImportTemplateDownload);
 currentStockButton.addEventListener("click", handleCurrentStockDownload);
 exportCurrentButton.addEventListener("click", handleCurrentStockDownload);
 excelExportButton.addEventListener("click", handleUpdateSheetDownload);
+priceListForm?.addEventListener("submit", previewPriceList);
+priceListFile?.addEventListener("change", () => {
+    if (!priceListFileName) return;
+    priceListFileName.textContent = priceListFile.files?.[0]?.name || "No file chosen";
+});
+priceListRemapButton?.addEventListener("click", () => previewPriceList());
+priceListImportButton?.addEventListener("click", () => importPriceList());
+priceListSelectedExport?.addEventListener("click", () => downloadPriceList("selected"));
+priceListAllExport?.addEventListener("click", () => downloadPriceList("all"));
+priceListSearchExport?.addEventListener("click", () => downloadPriceList("search"));
+priceListRevisionExport?.addEventListener("click", downloadPriceRevisionHistory);
+state.priceListPageSize = getStoredPriceListPageSize();
+if (priceListPageSize) priceListPageSize.value = String(state.priceListPageSize);
+priceListCustomerTrigger?.addEventListener("click", () => {
+    if (priceListCustomerMenu?.hidden) openPriceListCustomerDropdown();
+    else closePriceListCustomerDropdown();
+});
+priceListCustomerSearch?.addEventListener("input", () => {
+    state.priceListCustomerHighlightIndex = 0;
+    renderPriceListCustomerOptions();
+});
+priceListCustomerSearch?.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+        event.preventDefault();
+        movePriceListCustomerHighlight(1);
+    } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        movePriceListCustomerHighlight(-1);
+    } else if (event.key === "Enter") {
+        event.preventDefault();
+        const highlightedIndex = state.priceListCustomerHighlightIndex;
+        const customerName = highlightedIndex === 0
+            ? ""
+            : state.priceListCustomerResults[highlightedIndex - 1]?.name;
+        if (customerName !== undefined) selectPriceListCustomer(customerName);
+    } else if (event.key === "Escape") {
+        event.preventDefault();
+        closePriceListCustomerDropdown({ restoreFocus: true });
+    }
+});
+priceListCustomerClear?.addEventListener("click", () => {
+    if (priceListCustomerSearch) priceListCustomerSearch.value = "";
+    state.priceListCustomerHighlightIndex = 0;
+    renderPriceListCustomerOptions();
+    priceListCustomerSearch?.focus();
+});
+priceListCustomerOptions?.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-customer-value]");
+    if (!option) return;
+    selectPriceListCustomer(option.dataset.customerValue || "");
+});
+document.addEventListener("click", (event) => {
+    if (priceListCustomerCombobox && !priceListCustomerCombobox.contains(event.target)) {
+        closePriceListCustomerDropdown();
+    }
+});
+priceListPageSize?.addEventListener("change", () => {
+    const nextPageSize = Number(priceListPageSize.value);
+    if (!PRICE_LIST_PAGE_SIZE_OPTIONS.includes(nextPageSize)) return;
+    state.priceListPageSize = nextPageSize;
+    state.priceListPage = 1;
+    setStoredPriceListPageSize(nextPageSize);
+    loadPriceListEntries();
+});
+priceListBrandSelect?.addEventListener("change", () => { state.priceListPage = 1; loadPriceListEntries(); });
+priceListTypeSelect?.addEventListener("change", () => { state.priceListPage = 1; loadPriceListEntries(); });
+priceListComparisonMode?.addEventListener("change", loadPriceListEntries);
+priceListSearch?.addEventListener("input", debounce(() => { state.priceListPage = 1; loadPriceListEntries(); }, 250));
+priceListPrevious?.addEventListener("click", () => {
+    if (state.priceListPage <= 1) return;
+    state.priceListPage -= 1;
+    loadPriceListEntries();
+});
+priceListNext?.addEventListener("click", () => {
+    if (state.priceListPage * state.priceListPageSize >= state.priceListTotal) return;
+    state.priceListPage += 1;
+    loadPriceListEntries();
+});
+priceListTableBody?.addEventListener("click", handlePriceListTableAction);
+priceRevisionTimeline?.addEventListener("click", handlePriceRevisionAction);
 inventoryTableBody.addEventListener("click", handleTableClick);
 inventoryTableBody.addEventListener("change", (event) => {
     if (!event.target.classList.contains("rubber-movement-mode")) {
@@ -4165,6 +4808,7 @@ if (adjustmentItems && adjustmentItems.children.length === 0) {
     addAdjustmentItem("Mtr");
 }
 renderAdjustmentsPreview();
+applySidebarState();
 
 window.OnlyStockWarehouseBridge = Object.freeze({
     getInventory() {

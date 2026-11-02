@@ -2,6 +2,8 @@ import json
 import os
 import re
 import math
+import unicodedata
+from uuid import uuid4
 from datetime import datetime, timezone as datetime_timezone
 from io import BytesIO
 from pathlib import Path
@@ -23,9 +25,42 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
-    from .db import get_database, get_inventory_collection, get_stock_logs_collection, get_users_collection
+    from .db import (
+        get_database,
+        get_inventory_collection,
+        get_price_list_entries_collection,
+        get_price_list_imports_collection,
+        get_price_list_overrides_collection,
+        get_price_list_revisions_collection,
+        get_stock_logs_collection,
+        get_users_collection,
+    )
 except ImportError:
-    from db import get_database, get_inventory_collection, get_stock_logs_collection, get_users_collection
+    from db import (
+        get_database,
+        get_inventory_collection,
+        get_price_list_entries_collection,
+        get_price_list_imports_collection,
+        get_price_list_overrides_collection,
+        get_price_list_revisions_collection,
+        get_stock_logs_collection,
+        get_users_collection,
+    )
+
+try:
+    from .price_lists import (
+        build_price_list_workbook,
+        build_price_revision_history_workbook,
+        parse_price_list_file,
+        parse_price_value,
+    )
+except ImportError:
+    from price_lists import (
+        build_price_list_workbook,
+        build_price_revision_history_workbook,
+        parse_price_list_file,
+        parse_price_value,
+    )
 
 
 app = Flask(__name__)
@@ -4069,6 +4104,519 @@ def delete_item():
     inventory_collection.delete_one({"_id": item["_id"]})
     log_stock_change(item, "deleted", item["quantity"], 0, "manual", reason)
     return jsonify({"message": "Item deleted"})
+
+
+def _price_list_mapping_from_request():
+    raw_mapping = request.form.get("mapping") or request.form.get("column_mapping") or "{}"
+    try:
+        mapping = json.loads(raw_mapping)
+    except (TypeError, ValueError):
+        raise ValueError("Column mapping must be valid JSON")
+    return mapping if isinstance(mapping, dict) else {}
+
+
+def _active_price_list_import():
+    return get_price_list_imports_collection().find_one({"active": True}, sort=[("created_at", -1)])
+
+
+def _serialize_price_list_import(import_record):
+    if not import_record:
+        return None
+    return {
+        "id": str(import_record.get("_id", import_record.get("import_id", ""))),
+        "import_id": import_record.get("import_id"),
+        "filename": import_record.get("filename"),
+        "created_at": serialize_datetime_ist(import_record.get("created_at")),
+        "active": bool(import_record.get("active")),
+        "stats": import_record.get("stats") or {},
+    }
+
+
+PRICE_LIST_SEARCH_FIELDS = (
+    "customer_name",
+    "brand",
+    "product_type",
+    "original_item_description",
+    "item_name",
+    "size_code",
+    "price_list_id",
+    "sku",
+    "product_code",
+    "item_code",
+    "code",
+    "identifier",
+)
+
+
+def _price_list_search_tokens(value):
+    value = clean_text(value) or ""
+    if not value:
+        return []
+    normalized = unicodedata.normalize("NFKC", clean_text(value)).replace("×", " x ")
+    normalized = re.sub(r"(?i)(?<![A-Za-z0-9])x(?![A-Za-z0-9])", " ", normalized)
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", normalized).casefold()
+    return list(dict.fromkeys(token for token in normalized.split() if token))
+
+
+def _price_list_record_query(args, import_id):
+    query = {"import_id": import_id}
+    customer = clean_text(args.get("customer"))
+    brand = clean_text(args.get("brand"))
+    product_type = clean_text(args.get("product_type"))
+    search = clean_text(args.get("search"))
+    if customer and customer.casefold() != "all":
+        query["customer_name"] = {"$regex": f"^{re.escape(customer)}$", "$options": "i"}
+    if brand and brand.casefold() != "all":
+        query["brand"] = {"$regex": re.escape(brand), "$options": "i"}
+    if product_type and product_type.casefold() != "all":
+        query["product_type"] = {"$regex": re.escape(product_type), "$options": "i"}
+    search_tokens = _price_list_search_tokens(search)
+    if search_tokens:
+        query["$and"] = [
+            {
+                "$or": [
+                    {
+                        field: {
+                            "$regex": rf"(^|[^A-Za-z0-9]){re.escape(token)}([^A-Za-z0-9]|$)",
+                            "$options": "i",
+                        }
+                    }
+                    for field in PRICE_LIST_SEARCH_FIELDS
+                ]
+            }
+            for token in search_tokens
+        ]
+    return query
+
+
+def _price_list_entry_id(record):
+    return str(record.get("_id", ""))
+
+
+def _apply_price_overrides(records, import_id):
+    if not records:
+        return records
+    entry_ids = [_price_list_entry_id(record) for record in records]
+    overrides = get_price_list_overrides_collection().find(
+        {"import_id": import_id, "original_entry_id": {"$in": entry_ids}}
+    )
+    overrides_by_entry = {str(override["original_entry_id"]): override for override in overrides}
+    for record in records:
+        override = overrides_by_entry.get(_price_list_entry_id(record))
+        record["original_price"] = record.get("price")
+        record["updated_price"] = override.get("updated_price") if override else record.get("price")
+        record["price_revision_number"] = override.get("revision_number", 0) if override else 0
+        record["price_last_updated_at"] = override.get("last_updated_at") if override else None
+    return records
+
+
+def _serialize_price_list_record(record, override=None):
+    original_price = record.get("original_price", record.get("price"))
+    updated_price = record.get("updated_price", original_price)
+    if override:
+        updated_price = override.get("updated_price", updated_price)
+    return {
+        "id": _price_list_entry_id(record),
+        "entry_id": _price_list_entry_id(record),
+        "price_list_id": record.get("price_list_id"),
+        "customer_name": record.get("customer_name"),
+        "brand": record.get("brand"),
+        "product_type": record.get("product_type"),
+        "size_code": record.get("size_code"),
+        "original_item_description": record.get("original_item_description"),
+        "price": original_price,
+        "original_price": original_price,
+        "updated_price": updated_price,
+        "price_revision_number": record.get("price_revision_number", override.get("revision_number", 0) if override else 0),
+        "price_last_updated_at": serialize_datetime_ist(record.get("price_last_updated_at")),
+    }
+
+
+def _serialize_price_revision(revision):
+    return {
+        "id": str(revision.get("_id", "")),
+        "import_id": revision.get("import_id"),
+        "original_entry_id": revision.get("original_entry_id"),
+        "customer_name": revision.get("customer_name"),
+        "previous_price": revision.get("previous_price"),
+        "new_price": revision.get("new_price"),
+        "changed_by": revision.get("changed_by"),
+        "changed_at": serialize_datetime_ist(revision.get("changed_at")),
+        "revision_number": revision.get("revision_number"),
+        "change_reason": revision.get("change_reason"),
+        "restored_from_revision": revision.get("restored_from_revision"),
+    }
+
+
+def _run_price_revision_transaction(callback):
+    database = get_database()
+    client = getattr(database, "client", None)
+    if client is None or not hasattr(client, "start_session"):
+        raise RuntimeError("Price revisions require a MongoDB deployment with transaction support")
+    with client.start_session() as mongo_session:
+        with mongo_session.start_transaction():
+            return callback(mongo_session)
+
+
+def _change_price_in_transaction(
+    mongo_session,
+    entry_id,
+    import_id,
+    user,
+    new_price,
+    change_reason=None,
+    restored_from_revision=None,
+    entries_collection=None,
+    overrides_collection=None,
+    revisions_collection=None,
+):
+    if entries_collection is None:
+        entries_collection = get_price_list_entries_collection()
+    if overrides_collection is None:
+        overrides_collection = get_price_list_overrides_collection()
+    if revisions_collection is None:
+        revisions_collection = get_price_list_revisions_collection()
+    if entries_collection is None or overrides_collection is None or revisions_collection is None:
+        raise RuntimeError("Price revision collections are unavailable")
+    entry = entries_collection.find_one({"_id": entry_id, "import_id": import_id}, session=mongo_session)
+    if not entry:
+        return None, "Price-list entry not found"
+    override_query = {"import_id": import_id, "original_entry_id": str(entry["_id"])}
+    override = overrides_collection.find_one(override_query, session=mongo_session)
+    previous_price = override.get("updated_price") if override else entry.get("price")
+    if float(previous_price) == float(new_price):
+        return {"changed": False, "entry": entry, "override": override}, None
+    revision_number = int(override.get("revision_number", 0)) + 1 if override else 1
+    changed_at = now_ist()
+    override_document = {
+        **override_query,
+        "customer_name": entry.get("customer_name"),
+        "updated_price": new_price,
+        "revision_number": revision_number,
+        "last_updated_by": user.get("email"),
+        "last_updated_by_user_id": str(user.get("_id", "")),
+        "last_updated_at": changed_at,
+    }
+    overrides_collection.update_one(
+        override_query,
+        {"$set": override_document, "$setOnInsert": {"created_at": changed_at}},
+        upsert=True,
+        session=mongo_session,
+    )
+    revisions_collection.insert_one(
+        {
+            **override_query,
+            "customer_name": entry.get("customer_name"),
+            "previous_price": previous_price,
+            "new_price": new_price,
+            "changed_by": user.get("email"),
+            "changed_by_user_id": str(user.get("_id", "")),
+            "changed_at": changed_at,
+            "revision_number": revision_number,
+            "change_reason": clean_text(change_reason),
+            "restored_from_revision": restored_from_revision,
+        },
+        session=mongo_session,
+    )
+    override_document["last_updated_at"] = changed_at
+    return {"changed": True, "entry": entry, "override": override_document, "revision_number": revision_number}, None
+
+
+def _parse_price_entry_id(entry_id):
+    try:
+        return ObjectId(entry_id)
+    except Exception:
+        return None
+
+
+def _serialize_price_list_record_with_override(record, override):
+    return _serialize_price_list_record(record, override)
+    return {
+        "id": str(record.get("_id", "")),
+        "price_list_id": record.get("price_list_id"),
+        "customer_name": record.get("customer_name"),
+        "brand": record.get("brand"),
+        "product_type": record.get("product_type"),
+        "size_code": record.get("size_code"),
+        "original_item_description": record.get("original_item_description"),
+        "price": record.get("price"),
+    }
+
+
+@app.route("/price-lists/preview", methods=["POST"])
+def price_list_preview():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    uploaded_file = request.files.get("file")
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"error": "Upload a .csv, .xlsx, or .xls price-list file"}), 400
+    try:
+        parsed = parse_price_list_file(uploaded_file, _price_list_mapping_from_request())
+    except (ValueError, TypeError) as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({
+        "filename": parsed["filename"], "headers": parsed["headers"], "mapping": parsed["mapping"],
+        "stats": parsed["stats"], "invalid_records": parsed["invalid_records"][:200],
+        "duplicate_records": parsed["duplicate_records"][:200], "sample_records": parsed["records"][:25],
+        "can_import": parsed["stats"]["successful_import_count"] > 0,
+    })
+
+
+@app.route("/price-lists/import", methods=["POST"])
+def import_price_list():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    uploaded_file = request.files.get("file")
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"error": "Upload a .csv, .xlsx, or .xls price-list file"}), 400
+    try:
+        parsed = parse_price_list_file(uploaded_file, _price_list_mapping_from_request())
+    except (ValueError, TypeError) as error:
+        return jsonify({"error": str(error)}), 400
+    if not parsed["records"]:
+        return jsonify({"error": "No valid price-list records were found", "stats": parsed["stats"]}), 400
+
+    active_import = _active_price_list_import()
+    replace_existing = str(request.form.get("replace_existing", "false")).lower() in {"1", "true", "yes"}
+    if active_import and not replace_existing:
+        return jsonify({
+            "error": "A master price list already exists. Confirm replacement before importing a new file.",
+            "confirmation_required": True, "active_import": _serialize_price_list_import(active_import),
+        }), 409
+
+    import_id = str(uuid4())
+    created_at = now_ist()
+    imports_collection = get_price_list_imports_collection()
+    entries_collection = get_price_list_entries_collection()
+    import_record = {
+        "import_id": import_id, "filename": parsed["filename"], "created_at": created_at,
+        "active": False, "stats": parsed["stats"], "mapping": parsed["mapping"],
+    }
+    imports_collection.insert_one(import_record)
+    documents = [{"import_id": import_id, "source_filename": parsed["filename"], "created_at": created_at, **record} for record in parsed["records"]]
+    try:
+        for start in range(0, len(documents), 1000):
+            entries_collection.insert_many(documents[start : start + 1000], ordered=True)
+        imports_collection.update_many({"active": True}, {"$set": {"active": False}})
+        imports_collection.update_one({"import_id": import_id}, {"$set": {"active": True}})
+    except PyMongoError:
+        entries_collection.delete_many({"import_id": import_id})
+        imports_collection.delete_one({"import_id": import_id})
+        raise
+    import_record["active"] = True
+    return jsonify({"message": "Price list imported successfully", "import": _serialize_price_list_import(import_record), "stats": parsed["stats"]})
+
+
+@app.route("/price-lists/history", methods=["GET"])
+def price_list_history():
+    _, error_response = require_auth()
+    if error_response:
+        return error_response
+    history = get_price_list_imports_collection().find().sort("created_at", -1)
+    return jsonify({"imports": [_serialize_price_list_import(item) for item in history]})
+
+
+@app.route("/price-lists/customers", methods=["GET"])
+def price_list_customers():
+    _, error_response = require_auth()
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    if not active_import:
+        return jsonify({"customers": [], "active_import": None})
+    pipeline = [
+        {"$match": {"import_id": active_import["import_id"]}},
+        {"$group": {"_id": "$customer_name", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    entries_collection = get_price_list_entries_collection()
+    customers = [{"name": item["_id"], "count": item["count"]} for item in entries_collection.aggregate(pipeline)]
+    active_query = {"import_id": active_import["import_id"]}
+    brands = sorted(value for value in entries_collection.distinct("brand", active_query) if value)
+    product_types = sorted(value for value in entries_collection.distinct("product_type", active_query) if value)
+    return jsonify({"customers": customers, "brands": brands, "product_types": product_types, "active_import": _serialize_price_list_import(active_import)})
+
+
+@app.route("/price-lists/entries", methods=["GET"])
+def price_list_entries():
+    _, error_response = require_auth()
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    if not active_import:
+        return jsonify({"entries": [], "total": 0, "page": 1, "page_size": 50})
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        page_size = min(100, max(10, int(request.args.get("page_size", 50))))
+    except ValueError:
+        return jsonify({"error": "page and page_size must be integers"}), 400
+    query = _price_list_record_query(request.args, active_import["import_id"])
+    entries = get_price_list_entries_collection()
+    total = entries.count_documents(query)
+    cursor = entries.find(query).sort([("customer_name", 1), ("brand", 1), ("product_type", 1), ("original_item_description", 1)]).skip((page - 1) * page_size).limit(page_size)
+    page_records = list(cursor)
+    _apply_price_overrides(page_records, active_import["import_id"])
+    return jsonify({"entries": [_serialize_price_list_record(item) for item in page_records], "total": total, "page": page, "page_size": page_size, "active_import": _serialize_price_list_import(active_import)})
+
+
+@app.route("/price-lists/entries/<entry_id>/price", methods=["PATCH"])
+def update_price_list_price(entry_id):
+    user, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    object_id = _parse_price_entry_id(entry_id)
+    if not active_import or object_id is None:
+        return jsonify({"error": "Price-list entry not found"}), 404
+    data = request.get_json(silent=True) or {}
+    new_price, price_error = parse_price_value(data.get("updated_price"))
+    if price_error:
+        return jsonify({"error": price_error}), 400
+    entries_collection = get_price_list_entries_collection()
+    overrides_collection = get_price_list_overrides_collection()
+    revisions_collection = get_price_list_revisions_collection()
+    try:
+        result, operation_error = _run_price_revision_transaction(
+            lambda mongo_session: _change_price_in_transaction(
+                mongo_session,
+                object_id,
+                active_import["import_id"],
+                user,
+                new_price,
+                data.get("change_reason"),
+                entries_collection=entries_collection,
+                overrides_collection=overrides_collection,
+                revisions_collection=revisions_collection,
+            )
+        )
+    except (PyMongoError, RuntimeError) as error:
+        return jsonify({"error": f"Unable to save price revision safely: {error}"}), 503
+    if operation_error:
+        return jsonify({"error": operation_error}), 404
+    record = _serialize_price_list_record(result["entry"], result.get("override"))
+    return jsonify({"changed": result["changed"], "revision_number": result.get("revision_number"), "entry": record})
+
+
+@app.route("/price-lists/entries/<entry_id>/history", methods=["GET"])
+def price_list_entry_history(entry_id):
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    requested_import_id = clean_text(request.args.get("import_id"))
+    if requested_import_id:
+        active_import = {"import_id": requested_import_id}
+    object_id = _parse_price_entry_id(entry_id)
+    if not active_import or object_id is None:
+        return jsonify({"error": "Price-list entry not found"}), 404
+    revisions = get_price_list_revisions_collection().find(
+        {"import_id": active_import["import_id"], "original_entry_id": entry_id}
+    ).sort("revision_number", 1)
+    return jsonify({"revisions": [_serialize_price_revision(revision) for revision in revisions]})
+
+
+@app.route("/price-lists/entries/<entry_id>/restore", methods=["POST"])
+def restore_price_list_revision(entry_id):
+    user, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    object_id = _parse_price_entry_id(entry_id)
+    if not active_import or object_id is None:
+        return jsonify({"error": "Price-list entry not found"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        revision_number = int(data.get("revision_number"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "revision_number must be an integer"}), 400
+
+    entries_collection = get_price_list_entries_collection()
+    overrides_collection = get_price_list_overrides_collection()
+    revisions_collection = get_price_list_revisions_collection()
+
+    def restore_operation(mongo_session):
+        revision = revisions_collection.find_one(
+            {
+                "import_id": active_import["import_id"],
+                "original_entry_id": entry_id,
+                "revision_number": revision_number,
+            },
+            session=mongo_session,
+        )
+        if not revision:
+            return None, "Revision not found"
+        return _change_price_in_transaction(
+            mongo_session,
+            object_id,
+            active_import["import_id"],
+            user,
+            revision["new_price"],
+            data.get("change_reason") or f"Restored from revision {revision_number}",
+            revision_number,
+            entries_collection=entries_collection,
+            overrides_collection=overrides_collection,
+            revisions_collection=revisions_collection,
+        )
+
+    try:
+        result, operation_error = _run_price_revision_transaction(restore_operation)
+    except (PyMongoError, RuntimeError) as error:
+        return jsonify({"error": f"Unable to restore price revision safely: {error}"}), 503
+    if operation_error:
+        return jsonify({"error": operation_error}), 404
+    record = _serialize_price_list_record(result["entry"], result.get("override"))
+    return jsonify({"changed": result["changed"], "revision_number": result.get("revision_number"), "entry": record})
+
+
+@app.route("/price-lists/revisions/export", methods=["GET"])
+def export_price_revision_history():
+    _, error_response = require_role(*WRITE_ROLES)
+    if error_response:
+        return error_response
+    query = {}
+    import_id = clean_text(request.args.get("import_id"))
+    if import_id:
+        query["import_id"] = import_id
+    revisions = get_price_list_revisions_collection().find(query).sort([("changed_at", 1), ("revision_number", 1)])
+    workbook = build_price_revision_history_workbook([_serialize_price_revision(item) for item in revisions])
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="price_revision_history.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/price-lists/export", methods=["GET"])
+def export_price_list():
+    _, error_response = require_auth()
+    if error_response:
+        return error_response
+    active_import = _active_price_list_import()
+    if not active_import:
+        return jsonify({"error": "Import a master price list before exporting"}), 404
+    mode = request.args.get("mode", "selected")
+    if mode not in {"selected", "all", "search"}:
+        return jsonify({"error": "mode must be selected, all, or search"}), 400
+    selected_customer = clean_text(request.args.get("customer"))
+    if mode == "selected" and (not selected_customer or selected_customer.casefold() == "all"):
+        return jsonify({"error": "Select a customer before exporting the selected price list"}), 400
+    query = _price_list_record_query(request.args, active_import["import_id"])
+    source_records = list(get_price_list_entries_collection().find(query).sort([("customer_name", 1), ("brand", 1), ("product_type", 1), ("original_item_description", 1)]))
+    _apply_price_overrides(source_records, active_import["import_id"])
+    records = [_serialize_price_list_record(item) for item in source_records]
+    include_customer = mode == "search"
+    workbook = build_price_list_workbook(records, include_customer=include_customer, title="Search Results")
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = {"selected": "customer_price_list.xlsx", "all": "all_customer_price_lists.xlsx", "search": "price_list_search_results.xlsx"}.get(mode, "price_list.xlsx")
+    return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/upload-excel", methods=["POST"])

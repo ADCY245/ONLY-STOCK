@@ -111,3 +111,42 @@ def get_users_collection():
     collection.create_index([("email", 1)], unique=True, name="user_email_unique")
     collection.create_index([("role", 1)])
     return collection
+
+
+def get_price_list_entries_collection():
+    collection = get_database()["price_list_entries"]
+    collection.create_index([("import_id", 1), ("customer_name", 1), ("brand", 1), ("product_type", 1)])
+    collection.create_index([("import_id", 1), ("original_item_description", 1)])
+    collection.create_index([("import_id", 1), ("size_code", 1)])
+    collection.create_index([("import_id", 1), ("price_list_id", 1)])
+    return collection
+
+
+def get_price_list_imports_collection():
+    collection = get_database()["price_list_imports"]
+    collection.create_index([("active", 1), ("created_at", -1)])
+    collection.create_index([("created_at", -1)])
+    return collection
+
+
+def get_price_list_overrides_collection():
+    collection = get_database()["price_list_overrides"]
+    collection.create_index(
+        [("import_id", 1), ("original_entry_id", 1)],
+        unique=True,
+        name="price_list_override_identity",
+    )
+    collection.create_index([("import_id", 1), ("customer_name", 1)])
+    return collection
+
+
+def get_price_list_revisions_collection():
+    collection = get_database()["price_list_revisions"]
+    collection.create_index(
+        [("import_id", 1), ("original_entry_id", 1), ("revision_number", 1)],
+        unique=True,
+        name="price_list_revision_identity",
+    )
+    collection.create_index([("import_id", 1), ("original_entry_id", 1), ("changed_at", -1)])
+    collection.create_index([("changed_at", -1)])
+    return collection

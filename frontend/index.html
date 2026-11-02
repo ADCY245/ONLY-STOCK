@@ -83,9 +83,20 @@
     <div id="appShell" class="layout app-shell is-hidden">
         <aside class="sidebar">
             <div class="brand-block">
-                <p class="eyebrow">Inventory System</p>
-                <h1>Only Stock</h1>
-                <p class="sidebar-copy">Move between focused pages for overview, inventory management, Excel operations, and stock history.</p>
+                <div class="brand-heading">
+                    <span class="brand-mark" aria-hidden="true">OS</span>
+                    <div class="brand-copy-block">
+                        <p class="eyebrow">Inventory System</p>
+                        <h1>Only Stock</h1>
+                        <p class="sidebar-copy">Move between focused pages for overview, inventory management, Excel operations, and stock history.</p>
+                    </div>
+                    <button id="sidebarToggleButton" class="sidebar-toggle" type="button" aria-controls="primaryNavigation" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="m14.5 6-6 6 6 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+                        </svg>
+                        <span class="visually-hidden">Collapse sidebar</span>
+                    </button>
+                </div>
 
                 <div class="session-card">
                     <p id="sessionEmail" class="session-email">Not signed in</p>
@@ -94,34 +105,40 @@
                 </div>
             </div>
 
-            <nav class="nav-panel" aria-label="Primary">
-                <a class="nav-link" href="#overview" data-page-link="overview">
-                    <span class="nav-title">Overview</span>
-                    <span class="nav-copy">Snapshot, categories, and structure</span>
+            <nav id="primaryNavigation" class="nav-panel" aria-label="Primary">
+                <a class="nav-link" href="#overview" data-page-link="overview" data-tooltip="Overview">
+                    <span class="nav-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8" /><rect x="14" y="4" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8" /><rect x="4" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8" /><rect x="14" y="14" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>
+                    </span>
+                    <span class="nav-link-content"><span class="nav-title">Overview</span><span class="nav-copy">Snapshot, categories, and structure</span></span>
                 </a>
-                <a class="nav-link" href="#add-item" data-page-link="add-item" data-min-role="workshop">
-                    <span class="nav-title">Add Item</span>
-                    <span class="nav-copy">Create new inventory records</span>
+                <a class="nav-link" href="#add-item" data-page-link="add-item" data-min-role="workshop" data-tooltip="Add Item">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Add Item</span><span class="nav-copy">Create new inventory records</span></span>
                 </a>
-                <a class="nav-link" href="#inventory" data-page-link="inventory">
-                    <span class="nav-title">Inventory</span>
-                    <span class="nav-copy">Search, update, and delete stock</span>
+                <a class="nav-link" href="#inventory" data-page-link="inventory" data-tooltip="Inventory">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 7 8-3 8 3-8 3-8-3Z M4 7v10l8 3 8-3V7 M12 10v10" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Inventory</span><span class="nav-copy">Search, update, and delete stock</span></span>
                 </a>
-                <a class="nav-link" href="#warehouse" data-page-link="warehouse">
-                    <span class="nav-title">Warehouse</span>
-                    <span class="nav-copy">3D warehouse view and stock locations</span>
+                <a class="nav-link" href="#warehouse" data-page-link="warehouse" data-tooltip="Warehouse">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 8 8-4 8 4-8 4-8-4ZM4 8v8l8 4 8-4V8M12 12v8" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Warehouse</span><span class="nav-copy">3D warehouse view and stock locations</span></span>
                 </a>
-                <a class="nav-link" href="#excel" data-page-link="excel" data-min-role="workshop">
-                    <span class="nav-title">Excel Tools</span>
-                    <span class="nav-copy">Import and update inventory</span>
+                <a class="nav-link" href="#excel" data-page-link="excel" data-min-role="workshop" data-tooltip="Excel Tools">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 3h8l4 4v14H7z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" /><path d="M15 3v5h4M10 13l4 4M14 13l-4 4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Excel Tools</span><span class="nav-copy">Import and update inventory</span></span>
                 </a>
-                <a class="nav-link" href="#inventory-adjustments" data-page-link="inventory-adjustments" data-min-role="workshop">
-                    <span class="nav-title">Inventory Adjustments</span>
-                    <span class="nav-copy">Create adjustment XLS files</span>
+                <a class="nav-link" href="#price-lists" data-page-link="price-lists" data-min-role="workshop" data-tooltip="Price List Exporter">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m4 5 10-1 6 6-9 9-6-6-1-8Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" /><circle cx="9" cy="8" r="1.2" fill="currentColor" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Price List Exporter</span><span class="nav-copy">Customer-wise pricing lookup and export</span></span>
                 </a>
-                <a class="nav-link" href="#admin" data-page-link="admin" data-min-role="admin">
-                    <span class="nav-title">Admin Panel</span>
-                    <span class="nav-copy">Manage users and review stock logs</span>
+                <a class="nav-link" href="#inventory-adjustments" data-page-link="inventory-adjustments" data-min-role="workshop" data-tooltip="Inventory Adjustments">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 5v14M12 5v14M18 5v14M3.5 8h5M9.5 15h5M15.5 10h5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Inventory Adjustments</span><span class="nav-copy">Create adjustment XLS files</span></span>
+                </a>
+                <a class="nav-link" href="#admin" data-page-link="admin" data-min-role="admin" data-tooltip="Admin Panel">
+                    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M5 20c.7-3.2 3.1-5 7-5s6.3 1.8 7 5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" /></svg></span>
+                    <span class="nav-link-content"><span class="nav-title">Admin Panel</span><span class="nav-copy">Manage users and review stock logs</span></span>
                 </a>
             </nav>
 
@@ -146,6 +163,8 @@
             </section>
         </aside>
 
+        <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation"></button>
+
         <main class="content">
             <header class="page-header">
                 <div>
@@ -154,6 +173,10 @@
                     <p id="pageDescription" class="page-copy">See your stock health and move into each workspace from the menu.</p>
                 </div>
                 <div class="header-actions">
+                    <button id="mobileSidebarToggle" class="secondary-button mobile-sidebar-toggle" type="button" aria-controls="primaryNavigation" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" /></svg>
+                        <span>Menu</span>
+                    </button>
                     <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
                     <button id="adminPanelButton" class="primary-button" type="button" data-min-role="admin">Admin Panel</button>
                 </div>
@@ -604,6 +627,112 @@
                 </section>
             </section>
 
+            <section class="page" data-page="price-lists" data-min-role="workshop">
+                <section class="panel price-list-panel">
+                    <div class="section-heading">
+                        <div>
+                            <h3>Price List Exporter</h3>
+                            <p>Import a master customer price list, review the mapping, search customer-specific products, and export Excel workbooks.</p>
+                        </div>
+                        <p id="priceListMessage" class="message"></p>
+                    </div>
+
+                    <section class="price-list-section">
+                        <div class="section-heading compact">
+                            <div><h4>1. Upload Master File</h4><p>CSV, XLSX, and legacy XLS files are supported. Preview does not change inventory or pricing data.</p></div>
+                        </div>
+                        <form id="priceListForm" class="price-list-upload-form">
+                            <div class="price-list-upload-area">
+                                <div class="price-list-upload-copy">
+                                    <span class="price-list-upload-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 16V4M8 8l4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg>
+                                    </span>
+                                    <div><strong>Master price-list file</strong><span>Supported formats: CSV, XLSX, XLS</span><span id="priceListFileName" class="price-list-file-name">No file chosen</span></div>
+                                </div>
+                                <label class="price-list-file-picker" for="priceListFile"><span>Choose file</span><input id="priceListFile" type="file" accept=".csv,.xlsx,.xls" required></label>
+                            </div>
+                            <button class="primary-button" type="submit">Upload &amp; Preview</button>
+                        </form>
+                        <div id="priceListMapping" class="price-list-mapping is-hidden">
+                            <div class="section-heading compact"><div><h4>Column Mapping</h4><p>Automatic detection is shown below. Adjust it if the source file uses different headers.</p></div></div>
+                            <div class="price-list-mapping-grid">
+                                <label>Customer name<select id="priceListCustomerColumn"></select></label>
+                                <label>Item description<select id="priceListItemColumn"></select></label>
+                                <label>Price / rate<select id="priceListPriceColumn"></select></label>
+                                <label>Price-list ID (optional)<select id="priceListIdColumn"></select></label>
+                            </div>
+                            <button id="priceListRemapButton" class="secondary-button" type="button">Refresh Preview With Mapping</button>
+                        </div>
+                    </section>
+
+                    <section id="priceListPreview" class="price-list-section is-hidden">
+                        <div class="section-heading compact"><div><h4>2. Import Preview</h4><p id="priceListPreviewDescription">Review the detected records before importing.</p></div><strong id="priceListPreviewFilename"></strong></div>
+                        <div class="price-list-stat-grid">
+                            <article><span>Total records</span><strong id="priceListTotalCount">0</strong></article>
+                            <article><span>Unique customers</span><strong id="priceListCustomerCount">0</strong></article>
+                            <article><span>Unique products</span><strong id="priceListProductCount">0</strong></article>
+                            <article class="price-list-stat-warning"><span>Invalid / incomplete</span><strong id="priceListInvalidCount">0</strong></article>
+                            <article class="price-list-stat-warning"><span>Duplicate rows</span><strong id="priceListDuplicateCount">0</strong></article>
+                            <article class="price-list-stat-success"><span>Ready to import</span><strong id="priceListSuccessCount">0</strong></article>
+                        </div>
+                        <div id="priceListDiagnostics" class="price-list-diagnostics"></div>
+                        <button id="priceListImportButton" class="primary-button" type="button" disabled>Import Valid Records</button>
+                    </section>
+
+                    <section class="price-list-section">
+                        <div class="section-heading compact"><div><h4>3. Customer Lookup</h4><p>Choose one customer for its own prices, or use All Customers to compare prices across accounts.</p></div></div>
+                        <div class="price-list-toolbar">
+                            <label class="price-list-filter--customer">Customer
+                                <div id="priceListCustomerCombobox" class="price-list-customer-combobox">
+                                    <input id="priceListCustomerSelect" type="hidden" value="">
+                                    <button id="priceListCustomerTrigger" class="price-list-customer-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="priceListCustomerOptions">
+                                        <span id="priceListCustomerValue">All Customers</span>
+                                        <span class="price-list-customer-chevron" aria-hidden="true">⌄</span>
+                                    </button>
+                                    <div id="priceListCustomerMenu" class="price-list-customer-menu" hidden>
+                                        <div class="price-list-customer-search-row">
+                                            <input id="priceListCustomerSearch" class="price-list-customer-search" type="search" placeholder="Search customers" autocomplete="off" aria-label="Search customers">
+                                            <button id="priceListCustomerClear" class="price-list-customer-clear" type="button" aria-label="Clear customer search" title="Clear search">×</button>
+                                        </div>
+                                        <div id="priceListCustomerMatchCount" class="price-list-customer-count" aria-live="polite">0 customers</div>
+                                        <div id="priceListCustomerOptions" class="price-list-customer-options" role="listbox" aria-label="Customers"></div>
+                                    </div>
+                                </div>
+                            </label>
+                            <label class="price-list-filter--search">Search<input id="priceListSearch" type="search" placeholder="Search customer, brand, description, size or code..."></label>
+                            <label class="price-list-filter--brand">Brand<select id="priceListBrandSelect"><option value="">All brands</option></select></label>
+                            <label class="price-list-filter--type">Product type<select id="priceListTypeSelect"><option value="">All product types</option></select></label>
+                            <label class="price-list-filter--compare">Compare by<select id="priceListComparisonMode"><option value="updated">Updated pricing</option><option value="original">Original price</option></select></label>
+                            <label class="price-list-filter--page-size">Rows per page<select id="priceListPageSize"><option value="25" selected>25</option><option value="50">50</option><option value="75">75</option><option value="100">100</option></select></label>
+                        </div>
+                        <div class="price-list-actions">
+                            <button id="priceListSelectedExport" class="primary-button" type="button">Export Selected Customer</button>
+                            <button id="priceListAllExport" class="secondary-button" type="button">Export All Customers</button>
+                            <button id="priceListSearchExport" class="secondary-button" type="button">Export Search Results</button>
+                            <button id="priceListRevisionExport" class="secondary-button" type="button" data-min-role="workshop">Export Price Revision History</button>
+                        </div>
+                        <div class="table-wrap price-list-table-wrap">
+                            <table><thead><tr><th class="price-list-customer-column">Customer</th><th class="price-list-size-column">Size / Code</th><th class="price-list-description-column">Original Product Description</th><th class="price-list-original-column" data-align="right">Original Price</th><th class="price-list-updated-column" data-align="right">Updated Pricing</th><th class="price-list-actions-column" data-align="center">Actions</th></tr></thead><tbody id="priceListTableBody"><tr><td colspan="6" class="empty-state">Import a master price list to begin.</td></tr></tbody></table>
+                        </div>
+                        <div class="price-list-pager"><span id="priceListResultSummary">Showing 0–0 of 0 records · page 1</span><div><button id="priceListPrevious" class="secondary-button" type="button">Previous</button><button id="priceListNext" class="secondary-button" type="button">Next</button></div></div>
+                    </section>
+
+                    <section class="price-list-section">
+                        <div class="section-heading compact"><div><h4>Import History</h4><p>Previous master-file imports remain recorded for audit and replacement context.</p></div></div>
+                        <div id="priceListHistory" class="price-list-history"><p class="empty-state">No imports yet.</p></div>
+                    </section>
+                </section>
+            </section>
+
+            <dialog id="priceRevisionDialog" class="reason-dialog price-revision-dialog">
+                <form method="dialog">
+                    <h3>Price Revision History</h3>
+                    <p id="priceRevisionEntryLabel" class="field-hint"></p>
+                    <div id="priceRevisionTimeline" class="price-revision-timeline"><p class="empty-state">No revisions yet.</p></div>
+                    <div class="dialog-actions"><button class="secondary-button" value="close">Close</button></div>
+                </form>
+            </dialog>
+
             <section class="page" data-page="inventory-adjustments" data-min-role="workshop">
                 <section class="panel">
                     <div class="section-heading">
@@ -798,7 +927,7 @@
         </form>
     </dialog>
 
-    <script src="script.js?v=shared-json-catalog-20260831-v2"></script>
+    <script src="script.js?v=price-history-20261102"></script>
     <script type="module" src="warehouse.js?v=warehouse-view-20260831"></script>
 </body>
 </html>
