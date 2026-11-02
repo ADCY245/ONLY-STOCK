@@ -11,8 +11,9 @@ from openpyxl import Workbook, load_workbook
 from pymongo.errors import PyMongoError
 import xlwt
 from werkzeug.datastructures import FileStorage
+from werkzeug.exceptions import RequestEntityTooLarge
 
-from backend.app import _price_list_search_tokens, app
+from backend.app import PRICE_LIST_UPLOAD_MAX_BYTES, _price_list_search_tokens, app
 from backend.price_lists import build_price_list_workbook, parse_price_list_file, parse_product_description
 
 
@@ -183,6 +184,13 @@ class FakeDatabase:
 
 
 class PriceListTests(unittest.TestCase):
+    def test_price_list_upload_limit_returns_json_413(self):
+        self.assertEqual(app.config["MAX_CONTENT_LENGTH"], 25 * 1024 * 1024)
+        with app.test_request_context("/price-lists/preview", method="POST"):
+            response, status = app.handle_http_exception(RequestEntityTooLarge())
+        self.assertEqual(status, 413)
+        self.assertEqual(response.get_json()["max_upload_bytes"], PRICE_LIST_UPLOAD_MAX_BYTES)
+
     def test_universal_price_list_search_token_normalization(self):
         self.assertEqual(_price_list_search_tokens("1070 × 500"), ["1070", "500"])
         self.assertEqual(_price_list_search_tokens("B4P 1070"), ["b4p", "1070"])

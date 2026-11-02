@@ -23,6 +23,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.workbook.defined_name import DefinedName
 from pymongo.errors import DuplicateKeyError, PyMongoError
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge
 
 try:
     from .db import (
@@ -66,6 +67,8 @@ except ImportError:
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "only-stock-dev-secret")
+PRICE_LIST_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = PRICE_LIST_UPLOAD_MAX_BYTES
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 ALLOWED_SIGNUP_DOMAIN = "@chemo.in"
@@ -75,6 +78,14 @@ READ_ONLY_ROLES = {"user"}
 WRITE_ROLES = {"admin", "workshop"}
 LOG_ACCESS_ROLES = {"admin"}
 LOCATION_ID_PATTERN = re.compile(r"^WH-A-[A-Z0-9]{2,8}-L[1-9][0-9]*-[A-Z]$")
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_entity_too_large(error):
+    return jsonify({
+        "error": "Uploaded file is too large. The maximum permitted upload size is 25 MB.",
+        "max_upload_bytes": PRICE_LIST_UPLOAD_MAX_BYTES,
+    }), 413
 
 REQUIRED_EXCEL_COLUMNS = [
     "Category",

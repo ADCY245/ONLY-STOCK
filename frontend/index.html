@@ -647,11 +647,11 @@
                                     <span class="price-list-upload-icon" aria-hidden="true">
                                         <svg viewBox="0 0 24 24" focusable="false"><path d="M12 16V4M8 8l4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg>
                                     </span>
-                                    <div><strong>Master price-list file</strong><span>Supported formats: CSV, XLSX, XLS</span><span id="priceListFileName" class="price-list-file-name">No file chosen</span></div>
+                                    <div><strong>Master price-list file</strong><span>Supported formats: CSV, XLSX, XLS</span><span>Maximum file size: 25 MB</span><span id="priceListFileName" class="price-list-file-name">No file chosen</span></div>
                                 </div>
                                 <label class="price-list-file-picker" for="priceListFile"><span>Choose file</span><input id="priceListFile" type="file" accept=".csv,.xlsx,.xls" required></label>
                             </div>
-                            <button class="primary-button" type="submit">Upload &amp; Preview</button>
+                            <button id="priceListUploadButton" class="primary-button" type="submit">Upload &amp; Preview</button>
                         </form>
                         <div id="priceListMapping" class="price-list-mapping is-hidden">
                             <div class="section-heading compact"><div><h4>Column Mapping</h4><p>Automatic detection is shown below. Adjust it if the source file uses different headers.</p></div></div>

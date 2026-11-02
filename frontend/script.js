@@ -18,6 +18,8 @@ const state = {
     priceListPage: 1,
     priceListPageSize: 25,
     priceListTotal: 0,
+    priceListPreviewInFlight: false,
+    priceListImportInFlight: false,
     priceListCustomers: [],
     priceListCustomerResults: [],
     priceListCustomerHighlightIndex: 0,
@@ -26,6 +28,7 @@ const state = {
 const PRICE_LIST_PAGE_SIZE_OPTIONS = [25, 50, 75, 100];
 const PRICE_LIST_PAGE_SIZE_STORAGE_KEY = "onlystock.priceListPageSize";
 const PRICE_LIST_CUSTOMER_RENDER_LIMIT = 80;
+const MAX_PRICE_LIST_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const ROLE_LEVELS = {
     user: 1,
@@ -157,6 +160,7 @@ const adjustmentsMessage = document.getElementById("adjustmentsMessage");
 const priceListForm = document.getElementById("priceListForm");
 const priceListFile = document.getElementById("priceListFile");
 const priceListFileName = document.getElementById("priceListFileName");
+const priceListUploadButton = document.getElementById("priceListUploadButton");
 const priceListMapping = document.getElementById("priceListMapping");
 const priceListCustomerColumn = document.getElementById("priceListCustomerColumn");
 const priceListItemColumn = document.getElementById("priceListItemColumn");
@@ -2005,6 +2009,29 @@ function priceListEscape(value) {
     }[character]));
 }
 
+function formatPriceListFileSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function priceListFileExceedsLimit(file) {
+    if (!file || file.size <= MAX_PRICE_LIST_UPLOAD_BYTES) return false;
+    setMessage(priceListMessage, `This file is ${formatPriceListFileSize(file.size)}. The maximum permitted upload size is 25 MB.`, "error");
+    return true;
+}
+
+function updatePriceListUploadControls() {
+    const file = priceListFile?.files?.[0];
+    const tooLarge = priceListFileExceedsLimit(file);
+    if (priceListUploadButton) {
+        priceListUploadButton.disabled = Boolean(state.priceListPreviewInFlight) || tooLarge;
+    }
+    if (priceListImportButton) {
+        priceListImportButton.disabled = Boolean(state.priceListImportInFlight) || !state.priceListPreview?.can_import;
+    }
+}
+
 function getStoredPriceListPageSize() {
     try {
         const stored = Number(window.localStorage.getItem(PRICE_LIST_PAGE_SIZE_STORAGE_KEY));
@@ -2161,13 +2188,20 @@ function renderPriceListPreview(preview) {
 
 async function previewPriceList(event) {
     event?.preventDefault();
+    if (state.priceListPreviewInFlight) return;
     if (!priceListFile?.files?.[0]) {
         setMessage(priceListMessage, "Choose a CSV, XLSX, or XLS file first", "error");
         return;
     }
+    if (priceListFileExceedsLimit(priceListFile.files[0])) return;
     const formData = new FormData();
     formData.append("file", priceListFile.files[0]);
     formData.append("mapping", JSON.stringify(priceListMappingPayload()));
+    state.priceListPreviewInFlight = true;
+    if (priceListUploadButton) {
+        priceListUploadButton.disabled = true;
+        priceListUploadButton.textContent = "Uploading & Previewing…";
+    }
     try {
         setMessage(priceListMessage, "Reading the master price list…");
         const preview = await request("/price-lists/preview", { method: "POST", body: formData });
@@ -2177,15 +2211,25 @@ async function previewPriceList(event) {
         setMessage(priceListMessage, "Preview ready. Review the diagnostics before importing.", "success");
     } catch (error) {
         setMessage(priceListMessage, error.message, "error");
+    } finally {
+        state.priceListPreviewInFlight = false;
+        if (priceListUploadButton) {
+            priceListUploadButton.textContent = "Upload & Preview";
+        }
+        updatePriceListUploadControls();
     }
 }
 
 async function importPriceList(replaceExisting = false) {
+    if (state.priceListImportInFlight) return;
     if (!state.priceListPreview || !priceListFile?.files?.[0]) return;
+    if (priceListFileExceedsLimit(priceListFile.files[0])) return;
     const formData = new FormData();
     formData.append("file", priceListFile.files[0]);
     formData.append("mapping", JSON.stringify(priceListMappingPayload()));
     formData.append("replace_existing", replaceExisting ? "true" : "false");
+    state.priceListImportInFlight = true;
+    updatePriceListUploadControls();
     try {
         setMessage(priceListMessage, "Importing validated price records…");
         const result = await request("/price-lists/import", { method: "POST", body: formData });
@@ -2193,10 +2237,14 @@ async function importPriceList(replaceExisting = false) {
         await loadPriceListWorkspace();
     } catch (error) {
         if (error.status === 409 && window.confirm("A master price list already exists. Replace the current master dataset with this previewed file?")) {
+            state.priceListImportInFlight = false;
             await importPriceList(true);
             return;
         }
         setMessage(priceListMessage, error.message, "error");
+    } finally {
+        state.priceListImportInFlight = false;
+        updatePriceListUploadControls();
     }
 }
 
@@ -2440,7 +2488,10 @@ async function request(path, options = {}) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const error = new Error(data.error || "Request failed");
+        const message = response.status === 413
+            ? "Uploaded file is too large. The maximum permitted upload size is 25 MB."
+            : data.error || "Request failed";
+        const error = new Error(message);
         error.status = response.status;
         throw error;
     }
@@ -4653,8 +4704,13 @@ exportCurrentButton.addEventListener("click", handleCurrentStockDownload);
 excelExportButton.addEventListener("click", handleUpdateSheetDownload);
 priceListForm?.addEventListener("submit", previewPriceList);
 priceListFile?.addEventListener("change", () => {
-    if (!priceListFileName) return;
-    priceListFileName.textContent = priceListFile.files?.[0]?.name || "No file chosen";
+    const file = priceListFile.files?.[0];
+    if (priceListFileName) {
+        priceListFileName.textContent = file
+            ? `${file.name} (${formatPriceListFileSize(file.size)})`
+            : "No file chosen";
+    }
+    updatePriceListUploadControls();
 });
 priceListRemapButton?.addEventListener("click", () => previewPriceList());
 priceListImportButton?.addEventListener("click", () => importPriceList());
